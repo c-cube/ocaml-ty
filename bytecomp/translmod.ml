@@ -231,7 +231,15 @@ let compile_recmodule compile_rhs bindings cont =
 
 (* Compile a module expression *)
 
-let rec transl_module cc rootpath mexp =
+let rec transl_and_bind_module ?subst cc rootpath id mexp body =
+  let subst_lambda lam =
+    match subst with
+    | None -> lam
+    | Some subst -> subst_lambda subst lam
+  in
+  Llet(Strict, id, subst_lambda (transl_module cc rootpath mexp), body)
+
+and transl_module cc rootpath mexp =
   match mexp.mod_desc with
     Tmod_ident (path,_) ->
       apply_coercion cc (transl_path path)
@@ -303,9 +311,8 @@ and transl_structure fields cc rootpath = function
       Llet(Strict, id, transl_path path,
            transl_structure (id :: fields) cc rootpath rem)
   | Tstr_module( id, _, modl) ->
-      Llet(Strict, id,
-           transl_module Tcoerce_none (field_path rootpath id) modl,
-           transl_structure (id :: fields) cc rootpath rem)
+      transl_and_bind_module Tcoerce_none (field_path rootpath id) id modl
+        (transl_structure (id :: fields) cc rootpath rem)
   | Tstr_recmodule bindings ->
       let ext_fields =
         List.rev_append (List.map (fun (id, _,_,_) -> id) bindings) fields in
@@ -337,12 +344,16 @@ and transl_structure fields cc rootpath = function
       | id :: ids ->
           Llet(Alias, id, Lprim(Pfield pos, [Lvar mid]),
                rebind_idents (pos + 1) (id :: newfields) ids) in
-      Llet(Strict, mid, transl_module Tcoerce_none None modl,
-           rebind_idents 0 fields ids)
+      transl_and_bind_module Tcoerce_none None mid modl
+        (rebind_idents 0 fields ids)
+
+let transl_packed_module mexp =
+  transl_module Tcoerce_none None mexp
 
 (* Update forward declaration in Translcore *)
 let _ =
-  Translcore.transl_module := transl_module
+  Translcore.transl_and_bind_module := transl_and_bind_module Tcoerce_none None;
+  Translcore.transl_packed_module := transl_packed_module
 
 (* Compile an implementation *)
 
@@ -487,17 +498,16 @@ let transl_store_structure glob map prims str =
                              transl_store rootpath (add_ident true id subst)
                                           rem)))
   | Tstr_module( id, _, modl) ->
-      let lam =
-        transl_module Tcoerce_none (field_path rootpath id) modl in
       (* Careful: the module value stored in the global may be different
          from the local module value, in case a coercion is applied.
          If so, keep using the local module value (id) in the remainder of
          the compilation unit (add_ident true returns subst unchanged).
          If not, we can use the value from the global
          (add_ident true adds id -> Pgetglobal... to subst). *)
-      Llet(Strict, id, subst_lambda subst lam,
-        Lsequence(store_ident id,
-                  transl_store rootpath (add_ident true id subst) rem))
+      transl_and_bind_module
+        ~subst Tcoerce_none (field_path rootpath id) id modl
+        (Lsequence(store_ident id,
+                   transl_store rootpath (add_ident true id subst) rem))
   | Tstr_recmodule bindings ->
       let ids = List.map fst4 bindings in
       compile_recmodule
@@ -533,9 +543,8 @@ let transl_store_structure glob map prims str =
       | id :: idl ->
           Llet(Alias, id, Lprim(Pfield pos, [Lvar mid]),
                Lsequence(store_ident id, store_idents (pos + 1) idl)) in
-      Llet(Strict, mid,
-           subst_lambda subst (transl_module Tcoerce_none None modl),
-           store_idents 0 ids)
+      transl_and_bind_module ~subst Tcoerce_none None mid modl
+        (store_idents 0 ids)
 
   and store_ident id =
     try
@@ -691,8 +700,8 @@ let transl_toplevel_item item =
       (* we need to use the unique name for the module because of issues
          with "open" (PR#1672) *)
       set_toplevel_unique_name id;
-      toploop_setvalue id
-                        (transl_module Tcoerce_none (Some(Pident id)) modl)
+      transl_and_bind_module Tcoerce_none (Some(Pident id)) id modl
+        (toploop_setvalue_id id)
   | Tstr_recmodule bindings ->
       let idents = List.map fst4 bindings in
       compile_recmodule
@@ -727,7 +736,8 @@ let transl_toplevel_item item =
       | id :: ids ->
           Lsequence(toploop_setvalue id (Lprim(Pfield pos, [Lvar mid])),
                     set_idents (pos + 1) ids) in
-      Llet(Strict, mid, transl_module Tcoerce_none None modl, set_idents 0 ids)
+      transl_and_bind_module Tcoerce_none None mid modl
+        (set_idents 0 ids)
 
 let transl_toplevel_item_and_close itm =
   close_toplevel_term (transl_label_init (transl_toplevel_item itm))

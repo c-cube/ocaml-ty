@@ -30,9 +30,11 @@ type error =
 exception Error of Location.t * error
 
 (* Forward declaration -- to be filled in by Translmod.transl_module *)
-let transl_module =
-  ref((fun cc rootpath modl -> assert false) :
-      module_coercion -> Path.t option -> module_expr -> lambda)
+let transl_and_bind_module =
+  ref((fun id modl body -> assert false) :
+        Ident.t -> module_expr -> lambda -> lambda)
+let transl_packed_module =
+  ref((fun modl -> assert false) : module_expr -> lambda)
 
 let transl_object =
   ref (fun id s cl -> assert false :
@@ -808,9 +810,9 @@ and transl_exp0 e =
              modifs
              (Lvar cpy))
   | Texp_letmodule(id, _, modl, body) ->
-      Llet(Strict, id, !transl_module Tcoerce_none None modl, transl_exp body)
+      !transl_and_bind_module id modl (transl_exp body)
   | Texp_pack modl ->
-      !transl_module Tcoerce_none None modl
+      !transl_packed_module modl
   | Texp_assert (cond) ->
       if !Clflags.noassert
       then lambda_unit
