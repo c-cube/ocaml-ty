@@ -13,4 +13,6 @@ val transl_module_dynpath: module_expr -> lambda
 val transl_dynpath_init: Ident.t list -> lambda
 val transl_dynpath_init_pack: string -> string list -> lambda
 
-val transl_expr: Env.t -> Location.t -> Types.type_expr -> lambda
+val transl_expr:
+    Env.t -> Location.t ->
+    Typedtree.core_type option -> Types.type_expr -> lambda

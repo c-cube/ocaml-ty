@@ -288,6 +288,7 @@ module E = struct
   let newtype ?loc a b c = mk ?loc (Pexp_newtype (a, b, c))
   let pack ?loc a = mk ?loc (Pexp_pack a)
   let open_ ?loc a b = mk ?loc (Pexp_open (a, b))
+  let type_ ?loc a = mk ?loc (Pexp_type a)
 
   let lid ?(loc = Location.none) lid = ident ~loc (mkloc (Longident.parse lid) loc)
   let apply_nolabs ?loc f el = apply ?loc f (List.map (fun e -> ("", e)) el)
@@ -329,6 +330,7 @@ module E = struct
     | Pexp_newtype (s, e, c) -> newtype ~loc s (sub # expr e) c
     | Pexp_pack me -> pack ~loc (sub # module_expr me)
     | Pexp_open (lid, e) -> open_ ~loc (map_loc sub lid) (sub # expr e)
+    | Pexp_type t -> type_ ~loc t
 end
 
 module P = struct

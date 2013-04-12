@@ -1089,6 +1089,8 @@ simple_expr:
       { mkexp(Pexp_construct(mkrhs $1 1, None, false)) }
   | name_tag %prec prec_constant_constructor
       { mkexp(Pexp_variant($1, None)) }
+  | LPAREN TYPE core_type RPAREN
+      { mkexp(Pexp_type $3) }
   | LPAREN seq_expr RPAREN
       { reloc_exp $2 }
   | LPAREN seq_expr error

@@ -97,4 +97,4 @@ let transl_dynpath_init_pack targetname names =
 
 (** Type expressions and type declarations *)
 
-let transl_expr env loc ty = lambda_unit (* FIXME GRGR *)
+let transl_expr env loc cty ty = lambda_unit (* FIXME GRGR *)

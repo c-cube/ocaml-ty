@@ -338,6 +338,9 @@ and expression i ppf x =
   | Pexp_open (m, e) ->
       line i ppf "Pexp_open \"%a\"\n" fmt_longident_loc m;
       expression i ppf e
+  | Pexp_type t ->
+      line i ppf "Pexp_type\n";
+      core_type (i+1) ppf t
 
 and value_description i ppf x =
   line i ppf "value_description %a\n" fmt_location x.pval_loc;

@@ -119,6 +119,7 @@ and expression_desc =
   | Pexp_newtype of string * expression * bool
   | Pexp_pack of module_expr
   | Pexp_open of Longident.t loc * expression
+  | Pexp_type of core_type
 
 (* Value descriptions *)
 

@@ -119,7 +119,8 @@ let iter_expression f e =
     | Pexp_ident _
     | Pexp_assertfalse
     | Pexp_new _
-    | Pexp_constant _ -> ()
+    | Pexp_constant _
+    | Pexp_type _ -> ()
     | Pexp_function (_, eo, pel) ->
         may expr eo; List.iter (fun (_, e) -> expr e) pel
     | Pexp_apply (e, lel) -> expr e; List.iter (fun (_, e) -> expr e) lel
@@ -2757,6 +2758,15 @@ and type_expect_ ?in_function ?(implicit = false)env sexp ty_expected =
       { exp with
         exp_extra = (Texp_open (path, lid, newenv), loc) :: exp.exp_extra;
       }
+  | Pexp_type sty ->
+      let ty = Typetexp.transl_simple_type env false sty in
+      let to_unify = Predef.type_ty ty.ctyp_type in
+      unify_exp_types loc env to_unify ty_expected;
+      rue {
+        exp_desc = Texp_implicit (Some ty);
+        exp_loc = loc; exp_extra = [];
+        exp_type = instance env ty_expected;
+        exp_env = env }
 
 and type_label_access env loc srecord lid =
   if !Clflags.principal then begin_def ();
@@ -2859,7 +2869,7 @@ and type_argument env sarg ty_expected' ty_expected =
             let ty = instance env ty_arg in
             make_args
               ((l,
-                Some { exp_desc = Texp_implicit;
+                Some { exp_desc = Texp_implicit None;
                        exp_type = ty; exp_loc = sarg.pexp_loc; exp_env = env;
                        exp_extra = [] },
                 ImplicitTy)
@@ -3072,7 +3082,7 @@ and type_application env funct sargs =
               may_warn funct.exp_loc
                 (Warnings.Without_principality "eliminated optional argument");
               ignored := (l,ty,lv) :: !ignored;
-              Some (fun () -> { exp_desc = Texp_implicit;
+              Some (fun () -> { exp_desc = Texp_implicit None;
                                 exp_type = instance env ty;
                                 exp_loc = funct.exp_loc;
                                 exp_env = env;

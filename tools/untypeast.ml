@@ -295,9 +295,9 @@ and untype_expression exp =
         Pexp_object (untype_class_structure cl)
     | Texp_pack (mexpr) ->
         Pexp_pack (untype_module_expr mexpr)
-    | Texp_implicit ->
-        (* Inserted only as implicit argument. Should have been removed. *)
-        assert false
+    | Texp_implicit None -> assert false
+    | Texp_implicit (Some ty) ->
+        Pexp_type (untype_core_type ty)
   in
   List.fold_right untype_extra exp.exp_extra
     { pexp_loc = exp.exp_loc;

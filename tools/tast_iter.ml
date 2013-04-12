@@ -160,7 +160,7 @@ let expression sub exp =
       sub # class_structure cl
   | Texp_pack (mexpr) ->
       sub # module_expr mexpr
-  | Texp_implicit -> ()
+  | Texp_implicit cto -> opt (sub # core_type) cto
 
 
 let package_type sub pack =

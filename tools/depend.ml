@@ -175,6 +175,7 @@ let rec add_expr bv exp =
   | Pexp_newtype (_, e, _) -> add_expr bv e
   | Pexp_pack m -> add_module bv m
   | Pexp_open (m, e) -> addmodule bv m; add_expr bv e
+  | Pexp_type t -> add_type bv t
 
 and add_pat_expr_list bv pel =
   List.iter (fun (p, e) -> let bv = add_pattern bv p in add_expr bv e) pel
