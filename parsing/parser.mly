@@ -314,6 +314,12 @@ let wrap_type_annotation newtypes core_type body =
   let newtypes = List.map Misc.fst3 newtypes in
   (exp, ghtyp(Ptyp_poly(newtypes, varify_constructors newtypes core_type')))
 
+let count_caret s =
+  for i = 0 to String.length s - 1 do
+    if s.[i] <> '^' then syntax_error ()
+  done;
+  String.length s
+
 %}
 
 /* Tokens */
@@ -1581,17 +1587,23 @@ simple_core_type:
   | LPAREN core_type_comma_list RPAREN %prec below_SHARP
       { match $2 with [sty] -> sty | _ -> raise Parse_error }
 ;
+caret_list:
+    { 0 }
+  | INFIXOP1 { count_caret $1 }
+;
 simple_core_type2:
     QUOTE ident
       { mktyp(Ptyp_var $2) }
   | UNDERSCORE
       { mktyp(Ptyp_any) }
   | type_longident
-      { mktyp(Ptyp_constr(mkrhs $1 1, [],0)) }
-  | simple_core_type2 type_longident
-      { mktyp(Ptyp_constr(mkrhs $2 2, [$1],0)) }
-  | LPAREN core_type_comma_list RPAREN type_longident
-      { mktyp(Ptyp_constr(mkrhs $4 4, List.rev $2,0)) }
+      { mktyp(Ptyp_constr(mkrhs $1 1, [], 0)) }
+  | INFIXOP1 type_longident
+      { mktyp(Ptyp_constr(mkrhs $2 2, [], count_caret $1)) }
+  | simple_core_type2 caret_list type_longident
+      { mktyp(Ptyp_constr(mkrhs $3 3, [$1], $2)) }
+  | LPAREN core_type_comma_list RPAREN caret_list type_longident
+      { mktyp(Ptyp_constr(mkrhs $5 5, List.rev $2, $4)) }
   | LESS meth_list GREATER
       { mktyp(Ptyp_object $2) }
   | LESS GREATER
