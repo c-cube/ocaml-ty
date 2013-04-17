@@ -45,23 +45,30 @@ and ident_lazy_t = ident_create "lazy_t"
 and ident_ty = ident_create "ty"
 and ident_dummy = ident_create "dummy"
 
-let path_int = Pident ident_int
-and path_char = Pident ident_char
-and path_string = Pident ident_string
-and path_float = Pident ident_float
-and path_bool = Pident ident_bool
-and path_unit = Pident ident_unit
-and path_exn = Pident ident_exn
-and path_array = Pident ident_array
-and path_list = Pident ident_list
-and path_format6 = Pident ident_format6
-and path_option = Pident ident_option
-and path_nativeint = Pident ident_nativeint
-and path_int32 = Pident ident_int32
-and path_int64 = Pident ident_int64
-and path_lazy_t = Pident ident_lazy_t
-and path_ty = Pident ident_ty
-and path_dummy = Pident ident_dummy
+let builtin_paths = ref []
+
+let pident id =
+  let p = Pident id in
+  builtin_paths := p :: !builtin_paths;
+  p
+
+let path_int = pident ident_int
+and path_char = pident ident_char
+and path_string = pident ident_string
+and path_float = pident ident_float
+and path_bool = pident ident_bool
+and path_unit = pident ident_unit
+and path_exn = pident ident_exn
+and path_array = pident ident_array
+and path_list = pident ident_list
+and path_format6 = pident ident_format6
+and path_option = pident ident_option
+and path_nativeint = pident ident_nativeint
+and path_int32 = pident ident_int32
+and path_int64 = pident ident_int64
+and path_lazy_t = pident ident_lazy_t
+and path_ty = pident ident_ty
+and path_dummy = pident ident_dummy
 
 let type_int = newgenty (Tconstr(path_int, [], ref Mnil))
 and type_char = newgenty (Tconstr(path_char, [], ref Mnil))
@@ -271,3 +278,4 @@ let builtin_values =
 
 let _ = Ident.set_current_time 999
 let builtin_idents = List.rev !builtin_idents
+let builtin_paths = List.rev !builtin_paths

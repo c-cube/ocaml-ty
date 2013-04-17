@@ -66,3 +66,7 @@ val build_initial_env:
 
 val builtin_values: (string * Ident.t) list
 val builtin_idents: (string * Ident.t) list
+
+(* To build runtime types *)
+
+val builtin_paths: Path.t list
