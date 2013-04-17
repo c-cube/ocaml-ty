@@ -496,9 +496,8 @@ and untype_core_type ct =
     | Ttyp_arrow (label, ct1, ct2) ->
         Ptyp_arrow (label, untype_core_type ct1, untype_core_type ct2)
     | Ttyp_tuple list -> Ptyp_tuple (List.map untype_core_type list)
-    | Ttyp_constr (_path, lid, list) ->
-        Ptyp_constr (lid,
-          List.map untype_core_type list)
+    | Ttyp_constr (_path, lid, list, ofs) ->
+        Ptyp_constr (lid, List.map untype_core_type list, ofs)
     | Ttyp_object list ->
         Ptyp_object (List.map untype_core_field_type list)
     | Ttyp_class (_path, lid, list, labels) ->

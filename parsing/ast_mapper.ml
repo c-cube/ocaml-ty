@@ -34,7 +34,7 @@ module T = struct
   let var ?loc a = mk ?loc (Ptyp_var a)
   let arrow ?loc a b c = mk ?loc (Ptyp_arrow (a, b, c))
   let tuple ?loc a = mk ?loc (Ptyp_tuple a)
-  let constr ?loc a b = mk ?loc (Ptyp_constr (a, b))
+  let constr ?loc a b c = mk ?loc (Ptyp_constr (a, b, c))
   let object_ ?loc a = mk ?loc (Ptyp_object a)
   let class_ ?loc a b c = mk ?loc (Ptyp_class (a, b, c))
   let alias ?loc a b = mk ?loc (Ptyp_alias (a, b))
@@ -71,7 +71,7 @@ module T = struct
     | Ptyp_var s -> var ~loc s
     | Ptyp_arrow (lab, t1, t2) -> arrow ~loc lab (sub # typ t1) (sub # typ t2)
     | Ptyp_tuple tyl -> tuple ~loc (List.map (sub # typ) tyl)
-    | Ptyp_constr (lid, tl) -> constr ~loc (map_loc sub lid) (List.map (sub # typ) tl)
+    | Ptyp_constr (lid, tl, ofs) -> constr ~loc (map_loc sub lid) (List.map (sub # typ) tl) ofs
     | Ptyp_object l -> object_ ~loc (List.map (core_field_type sub) l)
     | Ptyp_class (lid, tl, ll) -> class_ ~loc (map_loc sub lid) (List.map (sub # typ) tl) ll
     | Ptyp_alias (t, s) -> alias ~loc (sub # typ t) s

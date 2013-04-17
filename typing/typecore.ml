@@ -1590,7 +1590,7 @@ let rec approx_type env sty =
       newty (Tarrow (p, ty1, approx_type env sty, Cok))
   | Ptyp_tuple args ->
       newty (Ttuple (List.map (approx_type env) args))
-  | Ptyp_constr (lid, ctl) ->
+  | Ptyp_constr (lid, ctl, ofs) ->
       begin try
         let (path, decl) = Env.lookup_type lid.txt env in
         if List.length ctl <> decl.type_arity then raise Not_found;

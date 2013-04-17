@@ -94,7 +94,7 @@ module T:
     val var: ?loc:Location.t -> string -> core_type
     val arrow: ?loc:Location.t -> label -> core_type -> core_type -> core_type
     val tuple: ?loc:Location.t -> core_type list -> core_type
-    val constr: ?loc:Location.t -> Longident.t loc -> core_type list -> core_type
+    val constr: ?loc:Location.t -> Longident.t loc -> core_type list -> int -> core_type
     val object_: ?loc:Location.t -> core_field_type list -> core_type
     val class_: ?loc:Location.t -> Longident.t loc -> core_type list -> label list -> core_type
     val alias: ?loc:Location.t -> core_type -> string -> core_type

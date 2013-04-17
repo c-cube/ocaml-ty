@@ -25,7 +25,7 @@ and core_type_desc =
   | Ptyp_var of string
   | Ptyp_arrow of label * core_type * core_type
   | Ptyp_tuple of core_type list
-  | Ptyp_constr of Longident.t loc * core_type list
+  | Ptyp_constr of Longident.t loc * core_type list * int
   | Ptyp_object of core_field_type list
   | Ptyp_class of Longident.t loc * core_type list * label list
   | Ptyp_alias of core_type * string

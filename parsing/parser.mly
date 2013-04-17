@@ -45,7 +45,7 @@ let mkcf d =
 let mkrhs rhs pos = mkloc rhs (rhs_loc pos)
 let mkoption d =
   let loc = {d.ptyp_loc with loc_ghost = true} in
-  { ptyp_desc = Ptyp_constr(mkloc (Ldot (Lident "*predef*", "option")) loc,[d]);
+  { ptyp_desc = Ptyp_constr(mkloc (Ldot (Lident "*predef*", "option")) loc,[d],0);
     ptyp_loc = loc}
 
 let reloc_pat x = { x with ppat_loc = symbol_rloc () };;
@@ -251,10 +251,11 @@ let varify_constructors var_names t =
       | Ptyp_arrow (label,core_type,core_type') ->
           Ptyp_arrow(label, loop core_type, loop core_type')
       | Ptyp_tuple lst -> Ptyp_tuple (List.map loop lst)
-      | Ptyp_constr( { txt = Lident s }, []) when List.mem s var_names ->
+      | Ptyp_constr( { txt = Lident s }, [], ofs) when List.mem s var_names ->
+          if ofs <> 0 then failwith "TODO ERROR ..."; (* FIXME GRGR *)
           Ptyp_var s
-      | Ptyp_constr(longident, lst) ->
-          Ptyp_constr(longident, List.map loop lst)
+      | Ptyp_constr(longident, lst, ofs) ->
+          Ptyp_constr(longident, List.map loop lst, ofs)
       | Ptyp_object lst ->
           Ptyp_object (List.map loop_core_field lst)
       | Ptyp_class (longident, lst, lbl_list) ->
@@ -303,7 +304,7 @@ let wrap_type_annotation newtypes core_type body =
       (fun (newtype, concrete, loc) core_type ->
         if concrete then
           let arg_type =
-            { ptyp_desc = Ptyp_constr (mkloc (Lident newtype) loc, []);
+            { ptyp_desc = Ptyp_constr (mkloc (Lident newtype) loc, [],0);
               ptyp_loc = loc } in
           ghtyp(Ptyp_arrow(CamlinternalTy.implicit_ty_label, arg_type, core_type))
         else
@@ -1586,11 +1587,11 @@ simple_core_type2:
   | UNDERSCORE
       { mktyp(Ptyp_any) }
   | type_longident
-      { mktyp(Ptyp_constr(mkrhs $1 1, [])) }
+      { mktyp(Ptyp_constr(mkrhs $1 1, [],0)) }
   | simple_core_type2 type_longident
-      { mktyp(Ptyp_constr(mkrhs $2 2, [$1])) }
+      { mktyp(Ptyp_constr(mkrhs $2 2, [$1],0)) }
   | LPAREN core_type_comma_list RPAREN type_longident
-      { mktyp(Ptyp_constr(mkrhs $4 4, List.rev $2)) }
+      { mktyp(Ptyp_constr(mkrhs $4 4, List.rev $2,0)) }
   | LESS meth_list GREATER
       { mktyp(Ptyp_object $2) }
   | LESS GREATER

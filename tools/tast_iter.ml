@@ -294,7 +294,7 @@ let core_type sub ct =
       sub # core_type ct1;
       sub # core_type ct2
   | Ttyp_tuple list -> List.iter (sub # core_type) list
-  | Ttyp_constr (_path, _, list) ->
+  | Ttyp_constr (_path, _, list, _ofs) ->
       List.iter (sub # core_type) list
   | Ttyp_object list ->
       List.iter (sub # core_field_type) list

@@ -216,7 +216,7 @@ class printer  ()= object(self:'self)
     | s  ->
         if s.[0]='?' then
           match ptyp_desc with
-          | Ptyp_constr ({txt;_}, l) ->
+          | Ptyp_constr ({txt;_}, l, ofs) ->
               assert (is_predef_option txt);
               pp f "%s:%a" s (self#list self#core_type1) l
           | _ -> failwith "invalid input in print_type_with_label"
@@ -243,7 +243,7 @@ class printer  ()= object(self:'self)
     | Ptyp_any -> pp f "_";
     | Ptyp_var s -> self#tyvar f  s;
     | Ptyp_tuple l ->  pp f "(%a)" (self#list self#core_type1 ~sep:"*@;") l
-    | Ptyp_constr (li, l) ->
+    | Ptyp_constr (li, l, ofs) ->
         pp f (* "%a%a@;" *) "%a%a"
           (fun f l -> match l with
           |[] -> ()

@@ -254,7 +254,7 @@ let rec transl_type env policy styp =
     let ctys = List.map (transl_type env policy) stl in
     let ty = newty (Ttuple (List.map (fun ctyp -> ctyp.ctyp_type) ctys)) in
     ctyp (Ttyp_tuple ctys) ty env loc
-  | Ptyp_constr(lid, stl) ->
+  | Ptyp_constr(lid, stl, ofs) ->
       let (path, decl) = find_type env styp.ptyp_loc lid.txt in
       if List.length stl <> decl.type_arity then
         raise(Error(styp.ptyp_loc, env,
@@ -280,7 +280,7 @@ let rec transl_type env policy styp =
       with Unify trace ->
         raise (Error(styp.ptyp_loc, env, Type_mismatch trace))
       end;
-        ctyp (Ttyp_constr (path, lid, args)) constr env loc
+        ctyp (Ttyp_constr (path, lid, args, ofs)) constr env loc
   | Ptyp_object fields ->
       let fields = List.map
           (fun pf ->

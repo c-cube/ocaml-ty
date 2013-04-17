@@ -568,8 +568,8 @@ module MakeMap(Map : MapArgument) = struct
         | Ttyp_arrow (label, ct1, ct2) ->
           Ttyp_arrow (label, map_core_type ct1, map_core_type ct2)
         | Ttyp_tuple list -> Ttyp_tuple (List.map map_core_type list)
-        | Ttyp_constr (path, lid, list) ->
-          Ttyp_constr (path, lid, List.map map_core_type list)
+        | Ttyp_constr (path, lid, list, ofs) ->
+          Ttyp_constr (path, lid, List.map map_core_type list, ofs)
         | Ttyp_object list -> Ttyp_object (List.map map_core_field_type list)
         | Ttyp_class (path, lid, list, labels) ->
           Ttyp_class (path, lid, List.map map_core_type list, labels)

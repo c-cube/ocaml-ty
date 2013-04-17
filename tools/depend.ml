@@ -42,7 +42,7 @@ let rec add_type bv ty =
   | Ptyp_var v -> ()
   | Ptyp_arrow(_, t1, t2) -> add_type bv t1; add_type bv t2
   | Ptyp_tuple tl -> List.iter (add_type bv) tl
-  | Ptyp_constr(c, tl) -> add bv c; List.iter (add_type bv) tl
+  | Ptyp_constr(c, tl, _) -> add bv c; List.iter (add_type bv) tl
   | Ptyp_object fl -> List.iter (add_field_type bv) fl
   | Ptyp_class(c, tl, _) -> add bv c; List.iter (add_type bv) tl
   | Ptyp_alias(t, s) -> add_type bv t

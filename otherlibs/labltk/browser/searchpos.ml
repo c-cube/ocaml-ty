@@ -117,7 +117,7 @@ let rec search_pos_type t ~pos ~env =
       search_pos_type t2 ~pos ~env
   | Ptyp_tuple tl ->
       List.iter tl ~f:(search_pos_type ~pos ~env)
-  | Ptyp_constr (lid, tl) ->
+  | Ptyp_constr (lid, tl, ofs) ->
       List.iter tl ~f:(search_pos_type ~pos ~env);
       add_found_sig (`Type, lid.txt) ~env ~loc:t.ptyp_loc
   | Ptyp_object fl ->

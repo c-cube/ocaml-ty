@@ -162,9 +162,9 @@ and eq_core_type_desc :
       ((Asttypes.eq_label (a0, b0)) && (eq_core_type (a1, b1))) &&
         (eq_core_type (a2, b2))
   | (Ptyp_tuple a0, Ptyp_tuple b0) -> eq_list eq_core_type (a0, b0)
-  | (Ptyp_constr (a0, a1), Ptyp_constr (b0, b1)) ->
+  | (Ptyp_constr (a0, a1, a2), Ptyp_constr (b0, b1, b2)) ->
       (Asttypes.eq_loc Longident.eq_t (a0, b0)) &&
-        (eq_list eq_core_type (a1, b1))
+        (eq_list eq_core_type (a1, b1)) && a2 = b2
   | (Ptyp_object a0, Ptyp_object b0) ->
       eq_list eq_core_field_type (a0, b0)
   | (Ptyp_class (a0, a1, a2), Ptyp_class (b0, b1, b2)) ->

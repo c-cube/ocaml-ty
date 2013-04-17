@@ -139,8 +139,8 @@ let rec core_type i ppf x =
   | Ptyp_tuple l ->
       line i ppf "Ptyp_tuple\n";
       list i core_type ppf l;
-  | Ptyp_constr (li, l) ->
-      line i ppf "Ptyp_constr %a\n" fmt_longident_loc li;
+  | Ptyp_constr (li, l,ofs) ->
+      line i ppf "Ptyp_constr %a (%d)\n" fmt_longident_loc li ofs;
       list i core_type ppf l;
   | Ptyp_variant (l, closed, low) ->
       line i ppf "Ptyp_variant closed=%s\n" (string_of_bool closed);

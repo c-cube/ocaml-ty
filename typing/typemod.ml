@@ -201,7 +201,7 @@ let merge_constraint initial_env loc  sg lid constr =
           match !real_id with None -> assert false | Some id -> id in
         let lid =
           try match sdecl.ptype_manifest with
-          | Some {ptyp_desc = Ptyp_constr (lid, stl)}
+          | Some {ptyp_desc = Ptyp_constr (lid, stl, ofs)}
             when List.length stl = List.length sdecl.ptype_params ->
               let params =
                 List.map

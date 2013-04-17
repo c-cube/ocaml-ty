@@ -269,7 +269,7 @@ and core_type_desc =
   | Ttyp_var of string
   | Ttyp_arrow of label * core_type * core_type
   | Ttyp_tuple of core_type list
-  | Ttyp_constr of Path.t * Longident.t loc * core_type list
+  | Ttyp_constr of Path.t * Longident.t loc * core_type list * int
   | Ttyp_object of core_field_type list
   | Ttyp_class of Path.t * Longident.t loc * core_type list * label list
   | Ttyp_alias of core_type * string
