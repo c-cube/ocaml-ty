@@ -16,3 +16,7 @@ val transl_dynpath_init_pack: string -> string list -> lambda
 val transl_expr:
     Env.t -> Location.t ->
     Typedtree.core_type option -> Types.type_expr -> lambda
+
+type error
+exception Error of Location.t * Types.type_expr * error
+val report_error: Format.formatter -> Types.type_expr -> error -> unit

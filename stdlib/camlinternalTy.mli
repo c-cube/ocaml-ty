@@ -18,3 +18,90 @@ val string_of_path: path -> string
 val string_of_internal_path: path -> string
 val name_of_path: path -> string
 val toplevel_path: path
+
+type record_representation = private
+  | Record_regular
+  | Record_float
+
+type mutable_flag = private
+  | Mutable
+  | Immutable
+
+type variance =
+  | Invariant
+  | Covariant
+  | Contravariant
+type location = private  string * int * int
+
+type uty = private {
+  expr_id: int;
+  desc: description;
+}
+
+and description = private
+  | DT_unit
+  | DT_bool
+  | DT_int
+  | DT_nativeint
+  | DT_int32
+  | DT_int64
+  | DT_char
+  | DT_string
+  | DT_float
+  | DT_exn
+  | DT_array of uty
+  | DT_list of uty
+  | DT_option of uty
+  | DT_lazy of uty
+  | DT_ty of uty
+  | DT_format6 of uty * uty * uty * uty * uty * uty
+  | DT_tuple of uty array
+  | DT_arrow of string * uty * uty
+  | DT_pvariant of pvariant_description
+  | DT_constr of declaration * uty array
+  | DT_var of string option
+  | DT_univar
+  | DT_object
+  | DT_package
+  | DT_dummy
+
+and declaration = private {
+  decl_id: path;
+  params: uty array;
+  variance: variance array;
+  priv: bool;
+  body: decl_description;
+  extern: declaration option;
+  loc: location;
+}
+
+and decl_description = private
+  | DT_alias of uty
+  | DT_variant of variant_description
+  | DT_record of record_description
+  | DT_abstract
+
+and pvariant_description = private {
+  pvariant_closed: bool;
+  pvariant_constructors: (string * int * bool * uty array) array;
+  pvariant_required: (string array) option;
+}
+
+and variant_description = private {
+  variant_constant_constructors:
+    (string * (uty array * bool) option) array;
+  variant_allocated_constructors:
+    (string * uty array * (uty array * bool) option) array;
+}
+
+and record_description = private {
+  record_representation : record_representation;
+  record_fields : (string * mutable_flag * scheme) array;
+}
+
+and scheme = private {
+  vars: uty array;
+  expr: uty;
+}
+
+val repr: 'a ty -> uty

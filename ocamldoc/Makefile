@@ -184,6 +184,7 @@ OCAMLCMOFILES=$(OCAMLSRCDIR)/parsing/printast.cmo \
 	$(OCAMLSRCDIR)/bytecomp/printlambda.cmo \
 	$(OCAMLSRCDIR)/bytecomp/switch.cmo \
 	$(OCAMLSRCDIR)/bytecomp/matching.cmo \
+	$(OCAMLSRCDIR)/bytecomp/transltyrepr.cmo \
 	$(OCAMLSRCDIR)/bytecomp/translobj.cmo \
 	$(OCAMLSRCDIR)/bytecomp/translcore.cmo \
 	$(OCAMLSRCDIR)/bytecomp/translclass.cmo \
