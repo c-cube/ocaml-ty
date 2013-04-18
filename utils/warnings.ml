@@ -61,6 +61,7 @@ type t =
   | Ambiguous_name of string list * string list *  bool    (* 41 *)
   | Disambiguated_name of string            (* 42 *)
   | Nonoptional_label of string             (* 43 *)
+  | Instantiated_dynamic_var of string      (* 44 *)
 ;;
 
 (* If you remove a warning, leave a hole in the numbering.  NEVER change
@@ -113,9 +114,10 @@ let number = function
   | Ambiguous_name _ -> 41
   | Disambiguated_name _ -> 42
   | Nonoptional_label _ -> 43
+  | Instantiated_dynamic_var _ -> 44
 ;;
 
-let last_warning_number = 43
+let last_warning_number = 44
 (* Must be the max number returned by the [number] function. *)
 
 let letter = function
@@ -328,6 +330,8 @@ let message = function
       "this use of " ^ s ^ " required disambiguation."
   | Nonoptional_label s ->
       "the label " ^ s ^ " is not optional."
+  | Instantiated_dynamic_var s ->
+      "the type variable '" ^ s ^ " has been implicitely instantiated."
 ;;
 
 let nerrors = ref 0;;

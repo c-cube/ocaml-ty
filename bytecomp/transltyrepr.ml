@@ -33,6 +33,8 @@ let new_coercion_id = Lprim(new_coercion_id_prim, [lambda_unit])
 (** Helpers *)
 
 let make_array l = Lprim (Pmakearray Pgenarray, l)
+let rec remove_first n l =
+  if n <= 0 then l else remove_first (n-1) (List.tl l)
 
 (** Compilation of Camlinternal.dynpath *)
 
@@ -142,14 +144,18 @@ type context = {
   mutable env: Env.t;
   loc: Location.t;
   mutable known_expr: type_expr list;
-  mutable shared_expr: (Types.type_expr * Ident.t) list;
-  mutable known_decl: (Path.t * Ident.t) list;
+  mutable shared_expr: (Types.type_expr * (Ident.t * Env.t)) list;
+  mutable known_decl: (Path.t * (Ident.t * Env.t)) list;
+  mutable aliases:
+    (Typedtree.core_type * (Ident.t * Typedtree.core_type)) list;
+  mutable alias_vars: (string * Ident.t) list;
 }
 
 let create_context env loc =
   { env; loc;
     known_expr = []; shared_expr = [];
-    known_decl = []; }
+    known_decl = [];
+    aliases = []; alias_vars = [] }
 
 let get_row_fields row =
   let row = Btype.row_repr row in
@@ -177,7 +183,7 @@ let rec mark_expr cxt ty =
       mark_desc cxt ty )
   else if not (List.mem_assq px cxt.shared_expr) then
     cxt.shared_expr <-
-      (px, Ident.create "tyrepr_expr") :: cxt.shared_expr
+      (px, (Ident.create "tyrepr_expr", cxt.env)) :: cxt.shared_expr
 
 and mark_desc cxt ty =
   match ty.Types.desc with
@@ -206,7 +212,7 @@ and mark_var cxt var =
   if not (List.mem_assq px cxt.shared_expr) then begin
     cxt.known_expr <- px :: cxt.known_expr;
     cxt.shared_expr <-
-      (px, Ident.create "tyrepr_var") :: cxt.shared_expr
+      (px, (Ident.create "tyrepr_var", cxt.env)) :: cxt.shared_expr
   end
 
 and mark_row_field cxt (_, row) =
@@ -222,7 +228,7 @@ and mark_path cxt path =
       | Env.Non_anchored | Env.Newtype _ | Env.Dynamic _ -> ()
       | Env.Anchored (_, _, extern) ->
           cxt.known_decl <-
-            (path, Ident.create "tyrepr_decl") :: cxt.known_decl;
+            (path, (Ident.create "tyrepr_decl", cxt.env)) :: cxt.known_decl;
           let decl = Env.find_type path cxt.env in
           List.iter (mark_var cxt) decl.type_params;
           mark_kind cxt decl.type_kind;
@@ -274,7 +280,7 @@ let build_expr desc =
 let rec transl_expr_rec cxt ty =
   let ty = Ctype.expand_head cxt.env ty in
   let px = Btype.proxy ty in
-  try Lvar (List.assq px cxt.shared_expr)
+  try Lvar (fst (List.assq px cxt.shared_expr))
   with Not_found -> transl_expr_rec1 cxt ty
 
 and transl_expr_rec1 cxt ty =
@@ -422,7 +428,7 @@ and transl_row_field cxt ty (lbl, f) =
           ty ])
 
 and transl_path_rec cxt path =
-  try Lvar (snd (List.find (fun (p,_) -> Path.same path p) cxt.known_decl))
+  try Lvar (fst (snd (List.find (fun (p,_) -> Path.same path p) cxt.known_decl)))
   with Not_found -> transl_decl_rec cxt path
 
 and transl_decl_rec cxt path =
@@ -484,7 +490,6 @@ and transl_external_decl cxt decl =
       let decl = transl_path_rec cxt (Pident id) in
       cxt.env <- env';
       Lprim (Pmakeblock (0, Immutable), [decl])
-
 
 and transl_constant_case_rec cxt (name,ty) =
   Lprim(Pmakeblock(0, Immutable),
@@ -576,28 +581,262 @@ and transl_kind_rec1 cxt kind =
                     make_array (List.map (transl_field_rec cxt) fields)
                   ])])
 
+(** Simplify 'core_type' by replacing prefixed type constructors
+    (e.g. '^t') with their external type. Also mark sharings. *)
+
+(* GRGR FIXME name *)
+let rec dyn_external env path ofs =
+  match Env.find_type_dynid path env with
+  | Env.Anchored (_, size, _) when ofs < size -> (env, path)
+  | Env.Anchored (_, size, None) -> assert false
+  | Env.Anchored (_, size, Some (id, env)) ->
+      dyn_external env (Path.Pident id) (ofs - size)
+  | _ -> (env, path)
+
+let rec simplify_and_mark_expr cxt cty =
+  match cty.ctyp_desc with
+  | Ttyp_constr (path, lid, params, ofs) ->
+      let decl = Env.find_type path cty.ctyp_env in
+      if decl.type_newtype_level <> None then cty else
+      let (ext_env, ext_path) = dyn_external cty.ctyp_env path ofs in
+      let params' = List.map (simplify_and_mark_expr cxt) params in
+      cxt.env <- ext_env;
+      if not (List.exists (Path.same ext_path) Predef.builtin_paths) then
+        mark_path cxt ext_path;
+      { cty with
+        ctyp_desc = Ttyp_constr (ext_path, lid, params', 0);
+        ctyp_env = ext_env }
+  | Ttyp_arrow (lbl, ty1, ty2) ->
+      { cty with
+        ctyp_desc =
+          Ttyp_arrow (lbl, simplify_and_mark_expr cxt ty1,
+                      simplify_and_mark_expr cxt ty2) }
+  | Ttyp_tuple tyl ->
+      { cty with
+        ctyp_desc = Ttyp_tuple (List.map (simplify_and_mark_expr cxt) tyl) }
+  | Ttyp_alias (ty, var) ->
+      let id = Ident.create "tyrepr_alias" in
+      let ty' = simplify_and_mark_expr cxt ty in
+      let cty = { cty with ctyp_desc = Ttyp_alias (ty', var) } in
+      cxt.aliases <- (cty, (id, ty')) :: cxt.aliases;
+      cxt.alias_vars <- (var, id) :: cxt.alias_vars;
+      cty
+  | Ttyp_variant (fields, closed, lbl) ->
+      { cty with
+        ctyp_desc =
+          Ttyp_variant (List.map (simplify_and_mark_row_field cxt) fields,
+                        closed, lbl) }
+  | Ttyp_poly _ -> assert false
+  | Ttyp_any
+  | Ttyp_var _ ->
+      let ty = Btype.repr cty.ctyp_type in
+      if Btype.is_Tvar ty then mark_var cxt ty else mark_expr cxt ty;
+      cty
+  | Ttyp_package _ | Ttyp_object _ | Ttyp_class _ -> cty (* TODO GRGR *)
+
+and simplify_and_mark_row_field cxt field =
+  match field with
+  | Ttag (lbl, conj, params) ->
+      Ttag (lbl, conj, List.map (simplify_and_mark_expr cxt) params)
+  | Tinherit ty -> Tinherit (simplify_and_mark_expr cxt ty)
+
+
+(** Compilation of 'Typedtree.core_type'. *)
+
+let rec transl_core_type_rec cxt cty =
+  try Lvar (fst (List.assq cty cxt.aliases))
+  with Not_found -> transl_core_type_rec1 cxt cty
+
+and transl_core_type_rec1 cxt cty =
+  match cty.ctyp_desc with
+  | Ttyp_alias _ -> assert false
+  | Ttyp_any -> transl_expr_rec cxt cty.ctyp_type
+  | Ttyp_var var ->
+      begin
+        try Lvar (List.assoc var cxt.alias_vars)
+        with Not_found ->
+          if not (Btype.is_Tvar (Btype.repr (cty.ctyp_type))) then
+            Location.prerr_warning cxt.loc
+              (Warnings.Instantiated_dynamic_var var);
+          transl_expr_rec cxt cty.ctyp_type
+      end
+  | Ttyp_constr (Pident id as path,_,[],_) ->
+      begin match Env.find_type_dynid path cxt.env with
+      | Env.Newtype id -> Lvar (Ident.tyrepr id)
+      | _ -> build_expr (transl_core_desc_rec cxt cty)
+      end
+  | _ -> build_expr (transl_core_desc_rec cxt cty)
+
+and transl_core_desc_rec cxt cty =
+  match cty.ctyp_desc with
+  | Ttyp_constr(path, _, [], _) when Path.same path Predef.path_unit ->
+      (* CamlinternalTy.DT_unit *)
+      Lconst(Const_base (Const_int 0))
+  | Ttyp_constr(path, _, [], _) when Path.same path Predef.path_bool ->
+      (* CamlinternalTy.DT_bool *)
+      Lconst(Const_base (Const_int 1))
+  | Ttyp_constr(path, _, [], _) when Path.same path Predef.path_int ->
+      (* CamlinternalTy.DT_int *)
+      Lconst(Const_base (Const_int 2))
+  | Ttyp_constr(path, _, [], _) when Path.same path Predef.path_nativeint ->
+      (* CamlinternalTy.DT_nativeint *)
+      Lconst(Const_base (Const_int 3))
+  | Ttyp_constr(path, _, [], _) when Path.same path Predef.path_int32 ->
+      (* CamlinternalTy.DT_int32 *)
+      Lconst(Const_base (Const_int 4))
+  | Ttyp_constr(path, _, [], _) when Path.same path Predef.path_int64 ->
+      (* CamlinternalTy.DT_int64 *)
+      Lconst(Const_base (Const_int 5))
+  | Ttyp_constr(path, _, [], _) when Path.same path Predef.path_char ->
+      (* CamlinternalTy.DT_char *)
+      Lconst(Const_base (Const_int 6))
+  | Ttyp_constr(path, _, [], _) when Path.same path Predef.path_string ->
+      (* CamlinternalTy.DT_string *)
+      Lconst(Const_base (Const_int 7))
+  | Ttyp_constr(path, _, [], _) when Path.same path Predef.path_float ->
+      (* CamlinternalTy.DT_float *)
+      Lconst(Const_base (Const_int 8))
+  | Ttyp_constr(path, _, [], _) when Path.same path Predef.path_exn ->
+      (* CamlinternalTy.DT_exn *)
+      Lconst(Const_base (Const_int 9))
+  | Ttyp_any ->
+      (* CamlinternalTy.DT_univar *)
+      Lconst(Const_base (Const_int 10))
+  | Ttyp_object _
+  | Ttyp_class _ ->
+      (* CamlinternalTy.DT_object *)
+      Lconst(Const_base (Const_int 11))
+  | Ttyp_package _ ->
+      (* CamlinternalTy.DT_package *)
+      Lconst(Const_base (Const_int 12))
+  | Ttyp_constr(path, _, [], _) when Path.same path Predef.path_dummy ->
+      (* CamlinternalTy.DT_dummy *)
+      Lconst(Const_base (Const_int 13))
+  | Ttyp_constr(path, _, [cty], _) when Path.same path Predef.path_array ->
+      (* CamlinternalTy.DT_array of uty *)
+      Lprim(Pmakeblock(0, Immutable), [transl_core_type_rec cxt cty])
+  | Ttyp_constr(path, _, [cty], _) when Path.same path Predef.path_list ->
+      (* CamlinternalTy.DT_list of uty *)
+      Lprim(Pmakeblock(1, Immutable), [transl_core_type_rec cxt cty])
+  | Ttyp_constr(path, _, [cty], _) when Path.same path Predef.path_option ->
+      (* CamlinternalTy.DT_option of uty *)
+      Lprim(Pmakeblock(2, Immutable), [transl_core_type_rec cxt cty])
+  | Ttyp_constr(path, _, [cty], _) when Path.same path Predef.path_lazy_t ->
+      (* CamlinternalTy.DT_lazy of uty *)
+      Lprim(Pmakeblock(3, Immutable), [transl_core_type_rec cxt cty])
+  | Ttyp_constr(path, _, [cty], _) when Path.same path Predef.path_ty ->
+      (* CamlinternalTy.DT_ty of uty *)
+      Lprim(Pmakeblock(4, Immutable), [transl_core_type_rec cxt cty])
+  | Ttyp_constr(path, _, [cty1;cty2;cty3;cty4;cty5;cty6], _)
+      when Path.same path Predef.path_format6 ->
+      (* CamlinternalTy.DT_format6 of uty * uty * uty * uty * uty * uty *)
+      Lprim(Pmakeblock(5, Immutable),
+            [transl_core_type_rec cxt cty1; transl_core_type_rec cxt cty2;
+             transl_core_type_rec cxt cty3; transl_core_type_rec cxt cty4;
+             transl_core_type_rec cxt cty5; transl_core_type_rec cxt cty6;])
+  | Ttyp_tuple ctyl ->
+      (* CamlinternalTy.DT_tuple of uty array *)
+      Lprim(Pmakeblock(6, Immutable),
+            [make_array (List.map (transl_core_type_rec cxt) ctyl)])
+  | Ttyp_arrow (lbl, cty1, cty2) ->
+      let cty1 =
+        if not (Btype.is_optional lbl) then cty1
+        else match cty1.ctyp_desc with
+        | Ttyp_constr (decl, _, [ty1], _) -> ty1
+        | _ -> assert false in
+      (* CamlinternalTy.DT_arrow of string * uty * uty *)
+      Lprim(Pmakeblock(7, Immutable),
+            [Lconst (Const_immstring lbl);
+             transl_core_type_rec cxt cty1;
+             transl_core_type_rec cxt cty2])
+  | Ttyp_variant (fields, closed, tags) ->
+      (* TODO GRGR warn if not closed and raw variable has been instantiated. *)
+      let tags =
+        match tags with
+        | None -> lambda_unit
+        | Some tags ->
+            let tags =
+              List.map (fun lbl -> Lconst (Const_immstring lbl)) tags in
+            Lprim(Pmakeblock (0, Immutable), [make_array tags]) in
+      (* CamlinternalTy.DT_pvariant of pvariant_declaration *)
+      Lprim(Pmakeblock(8, Immutable),
+            [Lprim (Pmakeblock (0, Immutable),
+                    [(* pvariant_closed = *)
+                     Lconst(Const_base
+                              (Const_int (if closed then 1 else 0)));
+                     (* pvariant_constructors = *)
+                      make_array (transl_core_row_fields cxt cty fields);
+                     (* pvariant_tags = *)
+                     tags])])
+  | Ttyp_constr (path, _, ctyl, _) ->
+      cxt.env <- cty.ctyp_env;
+      let decl = transl_path_rec cxt path in
+      (* CamlinternalTy.DT_constr of declaration * uty array *)
+      Lprim(Pmakeblock(9, Immutable),
+            [decl;
+             make_array (List.map (transl_core_type_rec cxt) ctyl)])
+  | Ttyp_var name ->
+      (* CamlinternalTy.DT_var of string option *)
+      Lprim(Pmakeblock(10, Immutable),
+            (* Some name *)
+            [Lprim(Pmakeblock(0, Immutable), [Lconst(Const_immstring name)])])
+  | Ttyp_poly _ | Ttyp_alias _ -> assert false
+
+and transl_core_row_fields cxt cty fields =
+  List.fold_right (transl_core_row_field cxt cty) fields []
+
+and transl_core_row_field cxt cty field acc =
+  match field with
+  | Ttag (lbl, opt_amp, params) ->
+      (* (string * int * bool * uty array) *)
+      Lprim(Pmakeblock (0, Immutable),
+            [ Lconst(Const_immstring ("`"^lbl));
+              Lconst(Const_base (Const_int (Btype.hash_variant lbl)));
+              Lconst
+                (Const_base
+                   (Const_int (if opt_amp && params <> [] then 1 else 0)));
+              make_array (List.map (transl_core_type_rec cxt) params) ]) :: acc
+  | Tinherit ty ->
+      (* TODO GRGR *)
+      raise (TyReprError
+               (Dynamic_type ("inherit (not implemented)", cty.ctyp_type)))
+
+
 (** Main functions. *)
 
 let build_context cxt body =
-  if cxt.shared_expr = [] && cxt.known_decl = [] then
+  if cxt.shared_expr = [] && cxt.known_decl = [] && cxt.aliases = [] then
     body
   else
     Lletrec(List.map
-              (fun (ty,id) ->
-                 (id, transl_expr_rec1 cxt ty))
+              (fun (ty,(id, env)) ->
+                cxt.env <- env;
+                (id, transl_expr_rec1 cxt ty))
               cxt.shared_expr
             @ List.map
-                (fun (path,id) ->
+                (fun (path,(id, env)) ->
+                  cxt.env <- env;
                   (id, transl_decl_rec cxt path))
-                cxt.known_decl,
+                cxt.known_decl
+            @ List.map
+                (fun (_, (id, cty)) ->
+                  (id, transl_core_type_rec1 cxt cty))
+                cxt.aliases,
             body)
 
 let transl_expr env loc cty ty =
   try
-    let cxt = create_context env loc in
-    mark_expr cxt ty;
-    let body = transl_expr_rec cxt ty in
-    build_context cxt body
+    match cty with
+    | None ->
+        let cxt = create_context env loc in
+        mark_expr cxt ty;
+        let body = transl_expr_rec cxt ty in
+        build_context cxt body
+    | Some cty ->
+        let cxt = create_context env loc in
+        let cty = simplify_and_mark_expr cxt cty in
+        let body = transl_core_type_rec cxt cty in
+        build_context cxt body
   with TyReprError e ->
     raise (Error (loc, ty, e))
 
