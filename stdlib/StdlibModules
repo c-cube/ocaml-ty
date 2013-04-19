@@ -29,6 +29,7 @@ STDLIB_MODULES=\
   char \
   complex \
   digest \
+  dynamic \
   filename \
   format \
   gc \

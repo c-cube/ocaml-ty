@@ -10,6 +10,7 @@ camlinternalTy.cmi : format.cmi
 char.cmi :
 complex.cmi :
 digest.cmi :
+dynamic.cmi :
 filename.cmi :
 format.cmi : pervasives.cmi buffer.cmi
 gc.cmi :
@@ -75,6 +76,8 @@ complex.cmo : complex.cmi
 complex.cmx : complex.cmi
 digest.cmo : string.cmi printf.cmi char.cmi digest.cmi
 digest.cmx : string.cmx printf.cmx char.cmx digest.cmi
+dynamic.cmo : obj.cmi camlinternalTy.cmi dynamic.cmi
+dynamic.cmx : obj.cmx camlinternalTy.cmx dynamic.cmi
 filename.cmo : sys.cmi string.cmi random.cmi printf.cmi lazy.cmi buffer.cmi \
     filename.cmi
 filename.cmx : sys.cmx string.cmx random.cmx printf.cmx lazy.cmx buffer.cmx \
@@ -189,6 +192,8 @@ complex.cmo : complex.cmi
 complex.p.cmx : complex.cmi
 digest.cmo : string.cmi printf.cmi char.cmi digest.cmi
 digest.p.cmx : string.p.cmx printf.p.cmx char.p.cmx digest.cmi
+dynamic.cmo : obj.cmi camlinternalTy.cmi dynamic.cmi
+dynamic.p.cmx : obj.p.cmx camlinternalTy.p.cmx dynamic.cmi
 filename.cmo : sys.cmi string.cmi random.cmi printf.cmi lazy.cmi buffer.cmi \
     filename.cmi
 filename.p.cmx : sys.p.cmx string.p.cmx random.p.cmx printf.p.cmx lazy.p.cmx buffer.p.cmx \
