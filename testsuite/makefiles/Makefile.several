@@ -24,6 +24,8 @@ FORTRAN_LIB=`if [ -z "$(F_FILES)" ]; then true; else echo '$(FORTRAN_LIBRARY)'; 
 ADD_CFLAGS+=$(FORTRAN_LIB)
 ADD_OPTFLAGS+=$(FORTRAN_LIB)
 
+TESTS?=*.ml
+
 check:
 	@if [ -n "$(FORTRAN_COMPILER)" -o -z "$(F_FILES)" ]; then $(MAKE) run-all; fi
 
@@ -34,7 +36,7 @@ run-all:
 	@for file in $(F_FILES); do \
 	  $(FORTRAN_COMPILER) -c -I$(PREFIX)/lib/ocaml/caml $$file.f; \
 	done;
-	@for file in *.ml; do \
+	@for file in $(TESTS); do \
 	  printf " ... testing '$$file':"; \
 	  $(MAKE) run-file DESC=ocamlc COMP='$(OCAMLC)' COMPFLAGS='$(ADD_COMPFLAGS) $(ADD_CFLAGS) $(O_FILES) -w a $(CMA_FILES) -I $(BASEDIR)/lib $(CMO_FILES)' FILE=$$file PROGRAM_ARGS=$(PROGRAM_ARGS) && \
 	  if [ -z "$(BYTECODE_ONLY)" ]; then \

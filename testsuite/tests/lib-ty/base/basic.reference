@@ -1,0 +1,61 @@
+unit
+bool
+int
+nativeint
+Int32.t
+Int64.t
+char
+string
+float
+exn
+unit array
+bool list
+int option
+char lazy_t
+(unit, unit, int, unit, unit, unit) ty
+string ty
+unit * bool
+unit * (bool * int) * char
+char -> string
+c:char -> string
+?c:char -> unit -> string
+?('abab) -> ?('baba) -> 'abab -> 'baba -> unit
+[ `A | `B ]
+[< `A | `B ]
+[> `A | `B ]
+[< `A | `B > `A ]
+[ `A of int ]
+[ `A of int * bool ]
+[< `A of int & bool ]
+'a list as 'a
+'a list list as 'a
+('a * 'a) list as 'a
+int list * int list * int list
+unit
+bool
+int
+nativeint
+Int32.t
+Int64.t
+char
+string
+float
+exn
+unit array
+bool list
+int option
+char lazy_t
+(unit, unit, int, unit, unit, unit) ty
+string ty
+unit * bool
+unit * (bool * int) * char
+char -> string
+c:char -> string
+?c:char -> unit -> string
+[> `A ]
+[ `B | `A ]
+[< `B | `A > `A ]
+[> `A of int ]
+[> `A of int * bool ]
+[< `B of int & bool | `A > `A ]
+'a list as 'a

@@ -1,0 +1,87 @@
+
+Without coercion
+
+External_ids.A.A1.a
+
+External_ids.A.A1.a
+
+
+One coercion
+
+[External_ids.B].B1.b
+# External_ids.B.B1.b
+[External_ids.B].B1.b1
+
+External_ids.B.B1.b
+
+
+Two coercions
+
+[[External_ids.C].C1].c
+# [External_ids.C].C1.c
+## External_ids.C.C1.c
+[[External_ids.C].C1].c1
+# [External_ids.C].C1.c1
+[[External_ids.C].C1].c2
+
+[External_ids.C].C1.c
+# External_ids.C.C1.c
+[External_ids.C].C1.c1
+
+External_ids.C.C1.c
+
+
+Functor
+
+[External_ids.F(External_ids.M)].t
+# External_ids.F(External_ids.M).t
+External_ids.F(External_ids.M).t
+External_ids.F(External_ids.M).t
+
+[External_ids.F(External_ids.M2)].t
+# External_ids.F(External_ids.M2).t
+External_ids.F(External_ids.M2).t
+External_ids.F(External_ids.M2).t
+
+[External_ids.F(External_ids.M2)].t
+# External_ids.F(External_ids.M2).t
+External_ids.F(External_ids.M2).t
+External_ids.F(External_ids.M2).t
+
+
+Generative functor
+
+[External_ids.F(anonymous(31))].t
+# External_ids.F(anonymous(31)).t
+External_ids.Anonymous.t
+
+[External_ids.F(anonymous(33))].t
+# External_ids.F(anonymous(33)).t
+External_ids.Alias.t
+
+[External_ids.F(anonymous(35))].t
+# External_ids.F(anonymous(35)).t
+External_ids.Coerce.t
+
+
+Functor coercion
+
+[[External_ids.D].F([External_ids.D].M)].t
+# [External_ids.D].F([External_ids.D].M).t
+[External_ids.D].F([External_ids.D].M).t
+
+[[External_ids.D].F([External_ids.D].M2)].t
+# [External_ids.D].F([External_ids.D].M2).t
+[External_ids.D].F([External_ids.D].M2).t
+
+[[External_ids.D].F(External_ids.D.M)].t
+# [External_ids.D].F(External_ids.D.M).t
+External_ids.D.F(External_ids.D.M).t
+
+
+External
+
+[Common].t
+# Common.t
+Common.t
+Common.t

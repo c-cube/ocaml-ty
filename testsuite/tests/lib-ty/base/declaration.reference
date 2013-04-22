@@ -1,0 +1,51 @@
+type a = A1 | A2 of int | A3 of int * bool | A4 of (bool * int)
+type b = Declaration.a list
+type c = { c : Declaration.a list; }
+type d = { mutable d1 : int; d2 : bool; }
+type e
+type f = private int
+type g = private G1 | G2
+type h = private [> `B | `A ]
+
+type a = A1 | A2 of int | A3 of int * bool | A4 of (bool * int)
+type b = Common.a list
+type c = { c : Common.a list; }
+type d = { mutable d1 : int; d2 : bool; }
+type e
+type f = private int
+type g = private G1 | G2
+type h = private [> `B | `A ]
+type t
+type t = T
+type t
+
+type 'a i = I1 | I2 of 'a * 'a Declaration.i
+  unit Declaration.i => I1 | I2 of unit * unit Declaration.i
+type 'a j = 'a list
+  bool Declaration.j => bool list
+type 'a k = { k : 'a list; }
+  int Declaration.k => { k : int list; }
+type 'a l
+  char Declaration.l => 
+type 'a m = private 'a list
+  string Declaration.m => string list
+type 'a n = private N1 | N2 of 'a
+  float Declaration.n => N1 | N2 of float
+type 'a o = private [> `A of 'a ]
+  Int32.t Declaration.o => [> `A of Int32.t ]
+type _ p = P1 : int p | P2 : 'a -> 'a p | P3 : 'a * 'b -> ('a * 'b) p
+  int Declaration.p => P1 : int p | P2 : int -> int p
+  (bool * char) Declaration.p => 
+      P2 : (bool * char) -> (bool * char) p
+    | P3 : bool * char -> (bool * char) p
+  Int64.t Declaration.p => P2 : Int64.t -> Int64.t p
+type ('a, 'b) q = Q1 of 'a | Q2 of 'b
+  (int, float) Declaration.q => Q1 of int | Q2 of float
+type (-'a, +'b) r
+  (unit, bool) Declaration.r => 
+type (-_, +_) s = S : ('a -> 'b) -> ('a, 'b) s
+  (char, string) Declaration.s => S : (char -> string) -> (char, string) s
+
+  ([ `A | `C ], [< `A | `B | `C > `B ]) Declaration.t => 
+      T1 of [ `A | `C ]
+    | T2 of [< `A | `B | `C > `B ]
