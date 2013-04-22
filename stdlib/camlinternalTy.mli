@@ -33,9 +33,12 @@ type variance =
   | Contravariant
 type location = private  string * int * int
 
+type builder
+type declaration_cache
+
 type uty = private {
   expr_id: int;
-  desc: description;
+  mutable desc: description;
 }
 
 and description = private
@@ -58,7 +61,7 @@ and description = private
   | DT_tuple of uty array
   | DT_arrow of string * uty * uty
   | DT_pvariant of pvariant_description
-  | DT_constr of declaration * uty array
+  | DT_constr of declaration * uty array * declaration_cache
   | DT_var of string option
   | DT_univar
   | DT_object
@@ -71,6 +74,7 @@ and declaration = private {
   variance: variance array;
   priv: bool;
   body: decl_description;
+  builder: builder;
   extern: declaration option;
   loc: location;
 }
@@ -105,3 +109,17 @@ and scheme = private {
 }
 
 val repr: 'a ty -> uty
+val ty: uty -> 'a ty
+
+val expand_head: uty -> uty
+val instantiated_description: uty -> path * uty array * decl_description
+val extract_decl: uty -> (declaration * uty array) option
+
+val equal: uty -> uty -> bool
+val equal_path: path -> path -> bool
+
+val copy: uty -> uty
+
+type subst = (uty * uty) list
+val substitute: subst -> uty -> uty
+val filter: uty -> uty -> subst option

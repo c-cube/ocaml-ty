@@ -35,6 +35,9 @@ let new_coercion_id = Lprim(new_coercion_id_prim, [lambda_unit])
 let make_array l = Lprim (Pmakearray Pgenarray, l)
 let rec remove_first n l =
   if n <= 0 then l else remove_first (n-1) (List.tl l)
+let ref_none = Lprim (Pmakeblock (0, Mutable), [lambda_unit])
+let ref_some x = Lprim (Pmakeblock (0, Mutable),
+                        [Lprim (Pmakeblock (0, Immutable), [x])])
 
 (** Compilation of Camlinternal.dynpath *)
 
@@ -271,8 +274,6 @@ let build_expr desc =
            new_expr_id;
            (* desc = *)
            desc;
-           (* head = *)
-           lambda_unit;
          ] )
 
 (** Type expressions and type declarations *)
@@ -396,7 +397,8 @@ and transl_desc_rec cxt ty =
       (* CamlinternalTy.DT_constr of declaration * uty array *)
       Lprim(Pmakeblock(9, Immutable),
             [transl_path_rec cxt path;
-             make_array (List.map (transl_expr_rec cxt) tyl)])
+             make_array (List.map (transl_expr_rec cxt) tyl);
+             ref_none ])
   | Tvar name ->
       (* CamlinternalTy.DT_var of string option *)
       Lprim(Pmakeblock(10, Immutable),
@@ -440,26 +442,30 @@ and transl_decl_rec cxt path =
   | Env.Anchored (dynid, _, ext_decl) ->
       let (filename, beg_char, end_char) =
         Location.get_pos_info decl.type_loc.Location.loc_start in
+      let kind = Ident.create "kind" in
       (* Build record of type 'CamlinternalTy.declaration' *)
-      Lprim (Pmakeblock (0, Immutable),
-             [ (* decl_id = *)
-               transl_dynpath cxt.env dynid;
-               (* params = *)
-               make_array
-                 (List.map (transl_expr_rec cxt) decl.type_params);
-               (* variance = *)
-               transl_variance decl;
-               (* priv = *)
-               transl_private decl;
-               (* body = *)
-               transl_kind_rec cxt decl;
-               (* extern = *)
-               transl_external_decl cxt ext_decl;
-               (* loc = *)
-               Lprim (Pmakeblock (0, Immutable),
-                      [Lconst(Const_immstring filename);
-                       Lconst(Const_base(Const_int beg_char));
-                       Lconst(Const_base(Const_int end_char));])])
+      Llet(Strict, kind, transl_kind_rec cxt decl,
+           Lprim (Pmakeblock (0, Immutable),
+                  [ (* decl_id = *)
+                    transl_dynpath cxt.env dynid;
+                    (* params = *)
+                    make_array
+                      (List.map (transl_expr_rec cxt) decl.type_params);
+                    (* variance = *)
+                    transl_variance decl;
+                    (* priv = *)
+                    transl_private decl;
+                    (* body = *)
+                    Lvar kind;
+                    (* builder = *)
+                    transl_builder cxt kind path decl;
+                    (* extern = *)
+                    transl_external_decl cxt ext_decl;
+                    (* loc = *)
+                    Lprim (Pmakeblock (0, Immutable),
+                           [Lconst(Const_immstring filename);
+                            Lconst(Const_base(Const_int beg_char));
+                            Lconst(Const_base(Const_int end_char));])]))
 
 and transl_variance decl =
   make_array
@@ -580,6 +586,47 @@ and transl_kind_rec1 cxt kind =
                     (* record_fields = *)
                     make_array (List.map (transl_field_rec cxt) fields)
                   ])])
+
+and transl_builder cxt kind path decl =
+  (* Build a function that instantiate the type declaration. *)
+  if decl.type_params = [] then
+    (* - without type parameter, do not reallocate. *)
+    Lfunction(Curried, [Ident.create ""], Lvar kind)
+  else if is_gadt decl.type_kind then
+    (* - with gadt, we must filter the returned type in each cases,
+         this is actually done in CamlinternalTy.instantiate_decl *)
+    Lfunction(Curried, [Ident.create ""], Lvar kind)
+  else
+    (* Build context for recursive instance compilation:
+       - insert type parameter as 'faked shared expr' *)
+    let cxt = { cxt with known_expr = []; shared_expr = [] } in
+    List.iter (mark_var cxt) decl.type_params;
+    let param_ids =
+      List.mapi (fun i (_, (id, _)) -> (id, i)) (List.rev cxt.shared_expr) in
+    mark_kind cxt decl.type_kind;
+    may (mark_expr cxt) decl.type_manifest;
+    let kind = transl_kind_rec cxt decl in
+    let shared_expr = (* Remove faked type parameter. *)
+      remove_first (List.length decl.type_params) (List.rev cxt.shared_expr) in
+    let fun_body = (* Build shared type expression. *)
+      if shared_expr = [] then kind else
+      Lletrec
+        (List.map
+           (fun (ty,(id, _)) -> (id, transl_expr_rec1 cxt ty))
+           shared_expr,
+         kind) in
+    (* Wrap actual type parameters as function parameters *)
+    let params_id = Ident.create "params" in
+    Lfunction(Curried, [params_id],
+              List.fold_right
+                (fun (id, ofs) body ->
+                  Llet(Strict, id,
+                       Lprim(Parrayrefs Pgenarray,
+                             [Lvar params_id;
+                              Lconst(Const_base (Const_int ofs))]),
+                       body))
+                param_ids fun_body)
+
 
 (** Simplify 'core_type' by replacing prefixed type constructors
     (e.g. '^t') with their external type. Also mark sharings. *)
@@ -774,7 +821,8 @@ and transl_core_desc_rec cxt cty =
       (* CamlinternalTy.DT_constr of declaration * uty array *)
       Lprim(Pmakeblock(9, Immutable),
             [decl;
-             make_array (List.map (transl_core_type_rec cxt) ctyl)])
+             make_array (List.map (transl_core_type_rec cxt) ctyl);
+             ref_none ])
   | Ttyp_var name ->
       (* CamlinternalTy.DT_var of string option *)
       Lprim(Pmakeblock(10, Immutable),
@@ -809,19 +857,19 @@ let build_context cxt body =
     body
   else
     Lletrec(List.map
-              (fun (ty,(id, env)) ->
-                cxt.env <- env;
-                (id, transl_expr_rec1 cxt ty))
-              cxt.shared_expr
+              (fun (_, (id, cty)) ->
+                (id, transl_core_type_rec1 cxt cty))
+              cxt.aliases
+            @ List.map
+                (fun (ty,(id, env)) ->
+                  cxt.env <- env;
+                  (id, transl_expr_rec1 cxt ty))
+                cxt.shared_expr
             @ List.map
                 (fun (path,(id, env)) ->
                   cxt.env <- env;
                   (id, transl_decl_rec cxt path))
-                cxt.known_decl
-            @ List.map
-                (fun (_, (id, cty)) ->
-                  (id, transl_core_type_rec1 cxt cty))
-                cxt.aliases,
+                cxt.known_decl,
             body)
 
 let transl_expr env loc cty ty =
