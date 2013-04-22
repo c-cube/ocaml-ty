@@ -1,4 +1,11 @@
 
+(** Helpers *)
+
+let may f = function None -> () | Some x -> f x
+let map_option f o = match o with
+  | None -> None
+  | Some v -> Some (f v)
+
 (** *)
 
 let implicit_ty_label = "!ty"
@@ -610,3 +617,561 @@ let filter subst ty1 ty2 =
 let () = filter_fwd := filter
 
 let filter ty1 ty2 = filter [] ty1 ty2
+
+(** Pretty-printing *)
+
+open Format
+
+type out_ident = string
+let print_ident = pp_print_string
+
+type out_type = (* From outcometree.mli *)
+  | Otyp_abstract
+  | Otyp_alias of out_type * string
+  | Otyp_arrow of string * out_type * out_type
+  | Otyp_class of bool * out_ident * out_type list
+  | Otyp_constr of out_ident * out_type list
+  | Otyp_manifest of out_type * out_type
+  | Otyp_object of (string * out_type) list * bool option
+  | Otyp_record of (string * bool * out_type) list
+  | Otyp_stuff of string
+  | Otyp_sum of (string * out_type list * out_type option) list
+  | Otyp_tuple of out_type list
+  | Otyp_var of string
+  | Otyp_variant of
+      bool * out_variant * bool * (string list) option
+  | Otyp_poly of string list * out_type
+  | Otyp_module of string * string list * out_type list
+
+and out_variant =
+  | Ovar_fields of (string * bool * out_type list) list
+  | Ovar_name of out_ident * out_type list
+
+(* From oprint.ml *)
+
+let rec print_list_init pr sep ppf =
+  function
+    [] -> ()
+  | a :: l -> sep ppf; pr ppf a; print_list_init pr sep ppf l
+
+let rec print_list pr sep ppf =
+  function
+    [] -> ()
+  | [a] -> pr ppf a
+  | a :: l -> pr ppf a; sep ppf; print_list pr sep ppf l
+
+let pr_present =
+  print_list (fun ppf s -> fprintf ppf "`%s" s) (fun ppf -> fprintf ppf "@ ")
+
+let pr_vars =
+  print_list (fun ppf s -> fprintf ppf "'%s" s) (fun ppf -> fprintf ppf "@ ")
+
+let type_parameter ppf (ty, var) =
+  fprintf ppf "%s%s"
+    (if var = Covariant then "+"
+     else if var = Contravariant then "-"
+     else "")
+    (if ty = "_" then ty else "'"^ty)
+
+let rec print_out_type ppf =
+  function
+  | Otyp_alias (ty, s) ->
+      fprintf ppf "@[%a@ as '%s@]" print_out_type ty s
+  | Otyp_poly (sl, ty) ->
+      fprintf ppf "@[<hov 2>%a.@ %a@]"
+        pr_vars sl
+        print_out_type ty
+  | ty ->
+      print_out_type_1 ppf ty
+
+and print_out_type_1 ppf =
+  function
+    Otyp_arrow (lab, ty1, ty2) ->
+      pp_open_box ppf 0;
+      if lab <> "" then
+        if lab = implicit_ty_label then
+          (pp_print_string ppf "?(")
+        else
+          (pp_print_string ppf lab; pp_print_char ppf ':');
+      print_out_type_2 ppf ty1;
+      if lab = implicit_ty_label then (pp_print_string ppf ")");
+      pp_print_string ppf " ->";
+      pp_print_space ppf ();
+      print_out_type_1 ppf ty2;
+      pp_close_box ppf ()
+  | ty -> print_out_type_2 ppf ty
+and print_out_type_2 ppf =
+  function
+    Otyp_tuple tyl ->
+      fprintf ppf "@[<0>%a@]" (print_typlist print_simple_out_type " *") tyl
+  | ty -> print_simple_out_type ppf ty
+and print_simple_out_type ppf =
+  function
+    Otyp_class (ng, id, tyl) ->
+      fprintf ppf "@[%a%s#%a@]" print_typargs tyl (if ng then "_" else "")
+        print_ident id
+  | Otyp_constr (id, tyl) ->
+      pp_open_box ppf 0;
+      print_typargs ppf tyl;
+      print_ident ppf id;
+      pp_close_box ppf ()
+  | Otyp_object (fields, rest) ->
+      fprintf ppf "@[<2>< %a >@]" (print_fields rest) fields
+  | Otyp_stuff s -> pp_print_string ppf s
+  | Otyp_var s -> fprintf ppf "'%s" s
+  | Otyp_variant (non_gen, row_fields, closed, tags) ->
+      let print_present ppf =
+        function
+          None | Some [] -> ()
+        | Some l -> fprintf ppf "@;<1 -2>> @[<hov>%a@]" pr_present l
+      in
+      let print_fields ppf =
+        function
+          Ovar_fields fields ->
+            print_list print_row_field (fun ppf -> fprintf ppf "@;<1 -2>| ")
+              ppf fields
+        | Ovar_name (id, tyl) ->
+            fprintf ppf "@[%a%a@]" print_typargs tyl print_ident id
+      in
+      fprintf ppf "%s[%s@[<hv>@[<hv>%a@]%a ]@]" (if non_gen then "_" else "")
+        (if closed then if tags = None then " " else "< "
+         else if tags = None then "> " else "? ")
+        print_fields row_fields
+        print_present tags
+  | Otyp_alias _ | Otyp_poly _ | Otyp_arrow _ | Otyp_tuple _ as ty ->
+      pp_open_box ppf 1;
+      pp_print_char ppf '(';
+      print_out_type ppf ty;
+      pp_print_char ppf ')';
+      pp_close_box ppf ()
+  | Otyp_abstract | Otyp_manifest _-> ()
+  | Otyp_record lbls ->
+      fprintf ppf "{%a@;<1 -2>}"
+        (print_list_init print_out_label (fun ppf -> fprintf ppf "@ ")) lbls
+  | Otyp_sum constrs ->
+      fprintf ppf "@;<0 2>%a"
+        (print_list print_out_constr (fun ppf -> fprintf ppf "@ | ")) constrs
+  | Otyp_module (p, n, tyl) ->
+      fprintf ppf "@[<1>(module %s" p;
+      let first = ref true in
+      List.iter2
+        (fun s t ->
+          let sep = if !first then (first := false; "with") else "and" in
+          fprintf ppf " %s type %s = %a" sep s print_out_type t
+        )
+        n tyl;
+      fprintf ppf ")@]"
+and print_fields rest ppf =
+  function
+    [] ->
+      begin match rest with
+        Some non_gen -> fprintf ppf "%s.." (if non_gen then "_" else "")
+      | None -> ()
+      end
+  | [s, t] ->
+      fprintf ppf "%s : %a" s print_out_type t;
+      begin match rest with
+        Some _ -> fprintf ppf ";@ "
+      | None -> ()
+      end;
+      print_fields rest ppf []
+  | (s, t) :: l ->
+      fprintf ppf "%s : %a;@ %a" s print_out_type t (print_fields rest) l
+and print_row_field ppf (l, opt_amp, tyl) =
+  let pr_of ppf =
+    if opt_amp then fprintf ppf " of@ &@ "
+    else if tyl <> [] then fprintf ppf " of@ "
+    else fprintf ppf ""
+  in
+  fprintf ppf "@[<hv 2>`%s%t%a@]" l pr_of (print_typlist print_out_type " &")
+    tyl
+and print_typlist print_elem sep ppf =
+  function
+    [] -> ()
+  | [ty] -> print_elem ppf ty
+  | ty :: tyl ->
+      print_elem ppf ty;
+      pp_print_string ppf sep;
+      pp_print_space ppf ();
+      print_typlist print_elem sep ppf tyl
+and print_typargs ppf =
+  function
+    [] -> ()
+  | [ty1] -> print_simple_out_type ppf ty1; pp_print_space ppf ()
+  | tyl ->
+      pp_open_box ppf 1;
+      pp_print_char ppf '(';
+      print_typlist print_out_type "," ppf tyl;
+      pp_print_char ppf ')';
+      pp_close_box ppf ();
+      pp_print_space ppf ()
+
+and print_out_type_decl ppf (name, args, ty, priv, constraints) =
+  let print_constraints ppf params =
+    List.iter
+      (fun (ty1, ty2) ->
+         fprintf ppf "@ @[<2>constraint %a =@ %a@]" print_out_type ty1
+           print_out_type ty2)
+      params
+  in
+  let type_defined ppf =
+    match args with
+      [] -> pp_print_string ppf name
+    | [arg] -> fprintf ppf "@[%a@ %s@]" type_parameter arg name
+    | _ ->
+        fprintf ppf "@[(@[%a)@]@ %s@]"
+          (print_list type_parameter (fun ppf -> fprintf ppf ",@ ")) args name
+  in
+  let print_name_args ppf = fprintf ppf "type %t" type_defined in
+  let print_private ppf = function
+    true -> fprintf ppf " private"
+  | false -> () in
+  let print_out_tkind ppf = function
+  | Otyp_abstract -> ()
+  | Otyp_record lbls ->
+      fprintf ppf " =%a {%a@;<1 -2>}"
+        print_private priv
+        (print_list_init print_out_label (fun ppf -> fprintf ppf "@ ")) lbls
+  | Otyp_sum constrs ->
+      fprintf ppf " =%a@;<1 2>%a"
+        print_private priv
+        (print_list print_out_constr (fun ppf -> fprintf ppf "@ | ")) constrs
+  | ty ->
+      fprintf ppf " =%a@;<1 2>%a"
+        print_private priv
+        print_out_type ty
+  in
+  fprintf ppf "@[<2>@[<hv 2>%t%a@]%a@]"
+    print_name_args
+    print_out_tkind ty
+    print_constraints constraints
+and print_out_constr ppf (name, tyl,ret_type_opt) =
+  match ret_type_opt with
+  | None ->
+      begin match tyl with
+      | [] ->
+          pp_print_string ppf name
+      | _ ->
+          fprintf ppf "@[<2>%s of@ %a@]" name
+            (print_typlist print_simple_out_type " *") tyl
+      end
+  | Some ret_type ->
+      begin match tyl with
+      | [] ->
+          fprintf ppf "@[<2>%s :@ %a@]" name print_simple_out_type  ret_type
+      | _ ->
+          fprintf ppf "@[<2>%s :@ %a -> %a@]" name
+            (print_typlist print_simple_out_type " *")
+            tyl print_simple_out_type ret_type
+      end
+
+
+and print_out_label ppf (name, mut, arg) =
+  fprintf ppf "@[<2>%s%s :@ %a@];" (if mut then "mutable " else "") name
+    print_out_type arg
+
+(* *)
+
+let use_internal_name = ref false
+
+type printing_context = {
+    mutable visited_objects: uty list;
+    mutable aliased: uty list;
+    mutable delayed: uty list;
+    mutable names: (uty * string) list;
+    mutable named_vars: string list;
+    mutable name_counter: int;
+  }
+
+let create_printing_context () = {
+  visited_objects = []; aliased = []; delayed = [];
+  names = []; named_vars = []; name_counter = 0;
+}
+
+let rec new_name cxt =
+  let name =
+    if cxt.name_counter < 26
+    then String.make 1 (Char.chr(97 + cxt.name_counter))
+    else String.make 1 (Char.chr(97 + cxt.name_counter mod 26)) ^
+           string_of_int(cxt.name_counter / 26) in
+  cxt.name_counter <- cxt.name_counter + 1;
+  if List.mem name cxt.named_vars
+  || List.exists (fun (_, name') -> name = name') cxt.names
+  then new_name cxt
+  else name
+
+let name_of_type cxt t =
+  try List.assq t cxt.names
+  with Not_found ->
+    match t.desc with
+    | DT_var (Some name) ->
+        let current_name = ref name in
+        let i = ref 0 in
+        while List.exists (fun (_, name') -> !current_name = name') cxt.names do
+          current_name := name ^ (string_of_int !i);
+          i := !i + 1;
+        done;
+        !current_name
+    | _ ->
+        let name = new_name cxt in
+        cxt.names <- (t, name) :: cxt.names;
+        name
+
+let check_name_of_type cxt ty = ignore(name_of_type cxt ty)
+
+let remove_names cxt tyl =
+  let tyl = Array.to_list tyl in
+  cxt.names <- List.filter (fun (ty,_) -> not (List.memq ty tyl)) cxt.names
+
+let aliasable ty =
+  match ty.desc with
+  | DT_var _ -> false
+  | _ -> true
+
+let is_aliased cxt ty = List.memq ty cxt.aliased
+let add_alias cxt ty =
+  if not (is_aliased cxt ty) then begin
+    cxt.aliased <- ty :: cxt.aliased
+  end
+
+let add_delayed cxt t =
+  if not (List.memq t cxt.delayed) then cxt.delayed <- t :: cxt.delayed
+
+let rec mark_loops_rec cxt visited ty =
+  if List.memq ty visited && aliasable ty then add_alias cxt ty else
+  let visited = ty :: visited in
+  match ty.desc with
+  | DT_unit | DT_bool | DT_int | DT_nativeint | DT_int32 | DT_int64
+  | DT_char | DT_string | DT_float | DT_exn ->
+      ()
+  | DT_array ty | DT_list ty | DT_option ty | DT_lazy ty | DT_ty ty ->
+      mark_loops_rec cxt visited ty
+  | DT_format6 (ty1, ty2, ty3, ty4, ty5, ty6) ->
+      mark_loops_rec cxt visited ty1;
+      mark_loops_rec cxt visited ty2;
+      mark_loops_rec cxt visited ty3;
+      mark_loops_rec cxt visited ty4;
+      mark_loops_rec cxt visited ty5;
+      mark_loops_rec cxt visited ty6
+  | DT_tuple tys ->
+      Array.iter (mark_loops_rec cxt visited) tys
+  | DT_arrow(_, ty1, ty2) ->
+      mark_loops_rec cxt visited ty1; mark_loops_rec cxt visited ty2
+  | DT_pvariant pv ->
+      Array.iter (mark_loops_case cxt visited) pv.pvariant_constructors
+  | DT_constr (path, tys, _) ->
+      Array.iter (mark_loops_rec cxt visited) tys
+  | DT_var _ | DT_univar | DT_object | DT_package | DT_dummy ->
+      ()
+
+and mark_loops_case cxt visited (_, _, _, oty) =
+  Array.iter (mark_loops_rec cxt visited) oty
+
+and mark_loops_scheme cxt visited sty =
+  Array.iter (fun t -> add_alias cxt t) sty.vars;
+  mark_loops_rec cxt visited sty.expr
+
+let mark_loops_desc cxt desc =
+  match desc with
+  | DT_abstract -> ()
+  | DT_alias ty -> mark_loops_rec cxt [] ty
+  | DT_variant cstrs ->
+      Array.iter
+        (fun (_, ret_type_opt) ->
+          may (fun (tys, _) -> Array.iter (mark_loops_rec cxt []) tys)
+            ret_type_opt)
+        cstrs.variant_constant_constructors;
+      Array.iter
+        (fun (_, args, ret_type_opt) ->
+          may (fun (tys, _) -> Array.iter (mark_loops_rec cxt []) tys)
+            ret_type_opt;
+          Array.iter (mark_loops_rec cxt []) args)
+        cstrs.variant_allocated_constructors
+  | DT_record r ->
+      Array.iter
+        (fun (_, _, sty) -> mark_loops_scheme cxt [] sty)
+        r.record_fields
+
+
+let mark_loops ty =
+  let cxt = create_printing_context () in
+  mark_loops_rec cxt [] ty;
+  cxt
+
+let is_optional l = l <> "" && l.[0] = '?'
+let is_implicit_ty l = l = implicit_ty_label
+
+let rec tree_of_typexp cxt ty =
+  if List.mem_assq ty cxt.names && not (List.memq ty cxt.delayed) then
+    Otyp_var (name_of_type cxt ty)
+  else
+    let pr_typ () =
+      match ty.desc with
+      | DT_unit -> Otyp_constr ("unit", [])
+      | DT_bool -> Otyp_constr ("bool", [])
+      | DT_int -> Otyp_constr ("int", [])
+      | DT_nativeint -> Otyp_constr ("nativeint", [])
+      | DT_int32 -> Otyp_constr ("Int32.t", [])
+      | DT_int64 -> Otyp_constr ("Int64.t", [])
+      | DT_char -> Otyp_constr ("char", [])
+      | DT_string -> Otyp_constr ("string", [])
+      | DT_float -> Otyp_constr ("float", [])
+      | DT_exn -> Otyp_constr ("exn", [])
+      | DT_array ty -> Otyp_constr ("array", [tree_of_typexp cxt ty])
+      | DT_list ty -> Otyp_constr ("list", [tree_of_typexp cxt ty])
+      | DT_option ty -> Otyp_constr ("option", [tree_of_typexp cxt ty])
+      | DT_lazy ty -> Otyp_constr ("lazy_t", [tree_of_typexp cxt ty])
+      | DT_ty ty -> Otyp_constr ("ty", [tree_of_typexp cxt ty])
+      | DT_format6 (ty1, ty2, ty3, ty4, ty5, ty6) ->
+          Otyp_constr ("ty", [tree_of_typexp cxt ty1; tree_of_typexp cxt ty2;
+                              tree_of_typexp cxt ty3; tree_of_typexp cxt ty4;
+                              tree_of_typexp cxt ty5; tree_of_typexp cxt ty6])
+      | DT_tuple tyl ->
+          Otyp_tuple (tree_of_typlist cxt tyl)
+      | DT_arrow(l, ty1, ty2) ->
+          Otyp_arrow (l, tree_of_typexp cxt ty1, tree_of_typexp cxt ty2)
+      | DT_pvariant pv ->
+          let fields =
+            Array.to_list
+              (Array.map
+                 (fun (lbl,_,opt, tyl) ->
+                   (lbl, opt,
+                    Array.to_list (Array.map (tree_of_typexp cxt) tyl)))
+                 pv.pvariant_constructors) in
+          Otyp_variant
+            (false, Ovar_fields fields, pv.pvariant_closed,
+             map_option Array.to_list pv.pvariant_required)
+      | DT_constr(decl, tyl, _) ->
+          let name =
+            if !use_internal_name then
+              string_of_internal_path decl.decl_id
+            else
+              string_of_path decl.decl_id in
+          Otyp_constr (name, tree_of_typlist cxt tyl)
+      | DT_var _ | DT_univar ->
+          Otyp_var (name_of_type cxt ty)
+      | DT_object ->
+          Otyp_abstract (* FIXME GRGR *)
+      | DT_package ->
+          Otyp_abstract (* FIXME GRGR *)
+      | DT_dummy ->
+          Otyp_constr ("dummy", [])
+  in
+  if List.memq ty cxt.delayed then
+    cxt.delayed <- List.filter ((!=) ty) cxt.delayed;
+  if is_aliased cxt ty && aliasable ty then begin
+    check_name_of_type cxt ty;
+    Otyp_alias (pr_typ (), name_of_type cxt ty) end
+  else pr_typ ()
+
+and tree_of_typlist cxt tyl =
+  Array.to_list (Array.map (tree_of_typexp cxt) tyl)
+
+let tree_of_constraints cxt params =
+  Array.fold_right
+    (fun ty list ->
+       let ty' =
+         match ty.desc with
+         | DT_var _ -> ty
+         | _ -> make_expr ty.desc in
+       if ty != ty' then
+         let tr = tree_of_typexp cxt ty in
+         (tr, tree_of_typexp cxt ty') :: list
+       else list)
+    params []
+
+let tree_of_scheme cxt sty =
+  if sty.vars = [||] then tree_of_typexp cxt sty.expr else
+  let old_delayed = cxt.delayed in
+  (* Make the names delayed, so that the real type is
+     printed once when used as proxy *)
+  Array.iter (add_delayed cxt) sty.vars;
+  let tl = Array.to_list (Array.map (name_of_type cxt) sty.vars) in
+  let tr = Otyp_poly (tl, tree_of_typexp cxt sty.expr) in
+  (* Forget names when we leave scope *)
+  remove_names cxt sty.vars;
+  cxt.delayed <- old_delayed; tr
+
+let rec tree_of_type_decl decl =
+
+  let name = name_of_path decl.decl_id in
+  let cxt = create_printing_context () in
+  Array.iter (add_alias cxt) decl.params;
+  Array.iter (mark_loops_rec cxt []) decl.params;
+  Array.iter (check_name_of_type cxt) decl.params;
+  mark_loops_desc cxt decl.body;
+  let type_param = function Otyp_var id -> id | _ -> "?" in
+  let abstr = decl.priv || decl.body = DT_abstract || is_gadt decl in
+  let args =
+    Array.to_list
+      (Array.mapi
+         (fun i ty ->
+           (type_param (tree_of_typexp cxt ty),
+            if abstr || not (is_var ty)
+            then decl.variance.(i)
+            else Invariant ))
+         decl.params) in
+  let constraints = tree_of_constraints cxt decl.params in
+  let body = tree_of_desc cxt name decl.body in
+  (name, args, body, decl.priv, constraints)
+
+and tree_of_desc cxt name desc =
+  match desc with
+  | DT_abstract -> Otyp_abstract
+  | DT_alias ty -> tree_of_typexp cxt ty
+  | DT_variant cstrs -> Otyp_sum (tree_of_constructors cxt name cstrs)
+  | DT_record r -> Otyp_record (tree_of_record cxt r)
+
+and tree_of_constructors cxt dname cstrs =
+  List.fold_right
+    (fun (name, ret) acc ->
+      match ret with
+      | None -> (name, [], None) :: acc
+      | Some (_, true) -> acc (* Impossible GADT case *)
+      | Some (ret_type, false) ->
+          let nm = cxt.names in
+          cxt.names <- [];
+          let ret = Otyp_constr (dname, tree_of_typlist cxt ret_type) in
+          cxt.names <- nm;
+          (name, [], Some ret) :: acc)
+    (Array.to_list cstrs.variant_constant_constructors)
+    (List.fold_right
+       (fun (name, args, ret) acc ->
+         match ret with
+         | None ->
+             (name, tree_of_typlist cxt args, None) :: acc
+         | Some (ret_type, true) -> acc (* Impossible GADT case *)
+         | Some (ret_type, false) ->
+             let nm = cxt.names in
+             cxt.names <- [];
+             let ret = Otyp_constr (dname, tree_of_typlist cxt ret_type) in
+             let args = tree_of_typlist cxt args in
+             cxt.names <- nm;
+             (name, args, Some ret) :: acc)
+       (Array.to_list cstrs.variant_allocated_constructors)
+       [])
+
+and tree_of_record cxt r =
+  Array.to_list
+    (Array.map
+       (fun (name, mut, sty) -> (name, mut = Mutable, tree_of_scheme cxt sty))
+       r.record_fields)
+
+let print_uty ppf ty =
+  let cxt = mark_loops ty in
+  print_out_type ppf (tree_of_typexp cxt ty)
+
+let string_of_uty uty =
+  let buf = Buffer.create 50 in
+  let ppf = Format.formatter_of_buffer buf in
+  print_uty ppf uty;
+  Format.pp_print_flush ppf ();
+  Buffer.contents buf
+
+let print_declaration ppf decl =
+  print_out_type_decl ppf (tree_of_type_decl decl)
+
+let print_decl_description ppf (name, desc) =
+  let cxt = create_printing_context () in
+  mark_loops_desc cxt desc;
+  print_out_type ppf (tree_of_desc cxt name desc)

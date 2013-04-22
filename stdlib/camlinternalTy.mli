@@ -123,3 +123,14 @@ val copy: uty -> uty
 type subst = (uty * uty) list
 val substitute: subst -> uty -> uty
 val filter: uty -> uty -> subst option
+
+val name: declaration -> string
+val qualified_name: declaration -> string
+val internal_name: declaration -> string
+
+val use_internal_name: bool ref
+val print_uty: Format.formatter -> uty -> unit
+val string_of_uty: uty -> string
+val print_declaration: Format.formatter -> declaration -> unit
+val print_decl_description:
+    Format.formatter -> (string * decl_description) -> unit
