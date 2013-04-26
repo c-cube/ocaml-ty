@@ -100,24 +100,26 @@ exception Unification_recursive_abbrev of (type_expr * type_expr) list
 
 let current_level = ref 0
 let nongen_level = ref 0
+let implicit_level = ref 0
 let global_level = ref 1
 let saved_level = ref []
 
 let get_current_level () = !current_level
-let init_def level = current_level := level; nongen_level := level
+let init_def level =
+  current_level := level; nongen_level := level; implicit_level := level
 let begin_def () =
-  saved_level := (!current_level, !nongen_level) :: !saved_level;
+  saved_level := (!current_level, !nongen_level, !implicit_level) :: !saved_level;
   incr current_level; nongen_level := !current_level
 let begin_class_def () =
-  saved_level := (!current_level, !nongen_level) :: !saved_level;
+  saved_level := (!current_level, !nongen_level, !implicit_level) :: !saved_level;
   incr current_level
 let raise_nongen_level () =
-  saved_level := (!current_level, !nongen_level) :: !saved_level;
+  saved_level := (!current_level, !nongen_level, !implicit_level) :: !saved_level;
   nongen_level := !current_level
 let end_def () =
-  let (cl, nl) = List.hd !saved_level in
+  let (cl, nl, il) = List.hd !saved_level in
   saved_level := List.tl !saved_level;
-  current_level := cl; nongen_level := nl
+  current_level := cl; nongen_level := nl; implicit_level := il
 
 let reset_global_level () =
   global_level := !current_level + 1
@@ -904,7 +906,7 @@ let abbreviations = ref (ref Mnil)
 
 (* partial: we may not wish to copy the non generic types
    before we call type_pat *)
-let rec copy ?env ?partial ?keep_names ty =
+let rec copy ?env ?partial ?keep_names ?(implicit = false) ty =
   let copy = copy ?env ?partial ?keep_names in
   let ty = repr ty in
   match ty.desc with
@@ -1015,6 +1017,16 @@ let rec copy ?env ?partial ?keep_names ty =
           end
       | Tobject (ty1, _) when partial <> None ->
           Tobject (copy ty1, ref None)
+      | Tarrow (lbl, ty1, ty2, com)
+        when implicit && partial = None
+             && lbl = CamlinternalTy.implicit_ty_label ->
+          (* Apply only when we instantiate identifier's type and then
+             identifier is the left member of an application. *)
+          let level = !current_level in
+          current_level := !implicit_level;
+          let ty1 = copy ty1 in
+          current_level := level;
+          Tarrow(lbl, ty1, copy ty2, com)
       | _ -> copy_type_desc ?keep_names copy desc
       end;
     t
@@ -1026,14 +1038,14 @@ let gadt_env env =
   then Some env
   else None
 
-let instance ?partial env sch =
+let instance ?partial ?implicit env sch =
   let env = gadt_env env in
   let partial =
     match partial with
       None -> None
     | Some keep -> Some (compute_univars sch, keep)
   in
-  let ty = copy ?env ?partial sch in
+  let ty = copy ?env ?partial ?implicit sch in
   cleanup_types ();
   ty
 

@@ -1820,9 +1820,9 @@ let unify_exp env exp expected_ty =
     Printtyp.raw_type_expr expected_ty; *)
     unify_exp_types exp.exp_loc env exp.exp_type expected_ty
 
-let rec type_exp env sexp =
+let rec type_exp ?implicit env sexp =
   (* We now delegate everything to type_expect *)
-  type_expect env sexp (newvar ())
+  type_expect ?implicit env sexp (newvar ())
 
 (* Typing of an expression with an expected type.
    This provide better error messages, and allows controlled
@@ -1830,13 +1830,13 @@ let rec type_exp env sexp =
    In the principal case, [type_expected'] may be at generic_level.
  *)
 
-and type_expect ?in_function env sexp ty_expected =
+and type_expect ?in_function ?implicit env sexp ty_expected =
   let previous_saved_types = Cmt_format.get_saved_types () in
-  let exp = type_expect_ ?in_function env sexp ty_expected in
+  let exp = type_expect_ ?in_function ?implicit env sexp ty_expected in
   Cmt_format.set_saved_types (Cmt_format.Partial_expression exp :: previous_saved_types);
   exp
 
-and type_expect_ ?in_function env sexp ty_expected =
+and type_expect_ ?in_function ?(implicit = false)env sexp ty_expected =
   let loc = sexp.pexp_loc in
   (* Record the expression type before unifying it with the expected type *)
   let rue exp =
@@ -1878,7 +1878,7 @@ and type_expect_ ?in_function env sexp ty_expected =
                 Texp_ident(path, lid, desc)
           end;
           exp_loc = loc; exp_extra = [];
-          exp_type = instance env desc.val_type;
+          exp_type = instance env ~implicit desc.val_type;
           exp_env = env }
       end
   | Pexp_constant(Const_string s as cst) ->
@@ -2018,7 +2018,7 @@ and type_expect_ ?in_function env sexp ty_expected =
   | Pexp_apply(sfunct, sargs) ->
       begin_def (); (* one more level for non-returning functions *)
       if !Clflags.principal then begin_def ();
-      let funct = type_exp env sfunct in
+      let funct = type_exp env ~implicit:true sfunct in
       if !Clflags.principal then begin
           end_def ();
           generalize_structure funct.exp_type

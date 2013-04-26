@@ -42,9 +42,10 @@ val type_self_pattern:
             Vars.t ref *
         Env.t * Env.t * Env.t
 val type_expect:
-        ?in_function:(Location.t * type_expr) ->
+        ?in_function:(Location.t * type_expr) -> ?implicit:bool ->
         Env.t -> Parsetree.expression -> type_expr -> Typedtree.expression
 val type_exp:
+        ?implicit:bool ->
         Env.t -> Parsetree.expression -> Typedtree.expression
 val type_approx:
         Env.t -> Parsetree.expression -> type_expr

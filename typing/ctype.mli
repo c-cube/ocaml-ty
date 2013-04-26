@@ -103,7 +103,7 @@ val limited_generalize: type_expr -> type_expr -> unit
         (* Only generalize some part of the type
            Make the remaining of the type non-generalizable *)
 
-val instance: ?partial:bool -> Env.t -> type_expr -> type_expr
+val instance: ?partial:bool -> ?implicit:bool -> Env.t -> type_expr -> type_expr
         (* Take an instance of a type scheme *)
         (* partial=None  -> normal
            partial=false -> newvar() for non generic subterms
