@@ -1366,7 +1366,7 @@ and transl_prim_1 p arg dbg =
       tag_int (Cop(Cextcall("caml_bswap16_direct", typ_int, false,
                             Debuginfo.none),
                    [untag_int (transl arg)]))
-  | _ ->
+  | p ->
       fatal_error "Cmmgen.transl_prim_1"
 
 and transl_prim_2 p arg1 arg2 dbg =
@@ -2102,9 +2102,13 @@ let emit_all_constants cont =
 
 (* Translate a compilation unit *)
 
-let compunit size ulam =
+let compunit size dynpath_ulam ulam =
   let glob = Compilenv.make_symbol None in
-  let init_code = transl ulam in
+  let dynpath_glob = glob ^ ":dynpath" in
+  let init_code =
+    Csequence(Cop (Cstore Word,
+                   [Cconst_symbol dynpath_glob; transl dynpath_ulam]),
+              transl ulam) in
   let c1 = [Cfunction {fun_name = Compilenv.make_symbol (Some "entry");
                        fun_args = [];
                        fun_body = init_code; fun_fast = false;
@@ -2114,7 +2118,11 @@ let compunit size ulam =
   Cdata [Cint(block_header 0 size);
          Cglobal_symbol glob;
          Cdefine_symbol glob;
-         Cskip(size * size_addr)] :: c3
+         Cskip(size * size_addr);
+         Cint(block_header 0 1);
+         Cglobal_symbol dynpath_glob;
+         Cdefine_symbol dynpath_glob;
+         Cskip(size_addr)] :: c3
 
 (*
 CAMLprim value caml_cache_public_method (value meths, value tag, value *cache)

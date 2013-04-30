@@ -108,7 +108,7 @@ let print_if ppf flag printer arg =
   arg
 
 let (++) x f = f x
-let (+++) (x, y) f = (x, f y)
+let (+++) (x, y, z) f = (x, f y, z)
 
 let implementation ppf sourcefile outputprefix =
   Location.input_name := sourcefile;

@@ -118,24 +118,32 @@ let get_global_info global_ident =
   let modname = Ident.name global_ident in
   if modname = current_unit.ui_name then
     Some current_unit
+  else if modname = current_unit.ui_name ^ ":dynpath" then
+    None
   else begin
     try
       Hashtbl.find global_infos_table modname
     with Not_found ->
+      let len = String.length modname in
+      let real_modname =
+        if len >= 8 && String.sub modname (len - 8) 8 = ":dynpath"
+        then String.sub modname 0 (len-8)
+        else modname in
       let (infos, crc) =
         try
           let filename =
-            find_in_path_uncap !load_path (modname ^ ".cmx") in
+            find_in_path_uncap !load_path (real_modname ^ ".cmx") in
           let (ui, crc) = read_unit_info filename in
-          if ui.ui_name <> modname then
+          if ui.ui_name <> real_modname then
             raise(Error(Illegal_renaming(ui.ui_name, filename)));
           (Some ui, crc)
         with Not_found ->
           (None, cmx_not_found_crc) in
       current_unit.ui_imports_cmx <-
-        (modname, crc) :: current_unit.ui_imports_cmx;
-      Hashtbl.add global_infos_table modname infos;
-      infos
+        (real_modname, crc) :: current_unit.ui_imports_cmx;
+      Hashtbl.add global_infos_table real_modname infos;
+      if real_modname == modname then infos
+      else (Hashtbl.add global_infos_table modname None; None)
   end
 
 let cache_unit_info ui =

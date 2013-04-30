@@ -642,9 +642,9 @@ let transl_store_phrases module_name str =
 let transl_store_implementation module_name (str, restr) =
   let s = !transl_store_subst in
   transl_store_subst := Ident.empty;
-  let r = transl_store_gen module_name (str, restr) false in
+  let (size, lam) = transl_store_gen module_name (str, restr) false in
   transl_store_subst := s;
-  r
+  (size, lam, Transltyrepr.dynpath_new_compunit_id module_name)
 
 (* Compile a toplevel phrase *)
 
