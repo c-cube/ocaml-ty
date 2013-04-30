@@ -274,6 +274,8 @@ let build_expr desc =
            new_expr_id;
            (* desc = *)
            desc;
+           (* head = *)
+           lambda_unit;
          ] )
 
 (** Type expressions and type declarations *)

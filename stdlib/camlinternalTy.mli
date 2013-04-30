@@ -31,14 +31,18 @@ type variance =
   | Invariant
   | Covariant
   | Contravariant
+
 type location = private  string * int * int
 
 type builder
 type declaration_cache
+type dynamic_head
+type head_cache
 
 type uty = private {
   expr_id: int;
   mutable desc: description;
+  mutable head: head_cache;
 }
 
 and description = private
@@ -114,6 +118,7 @@ val ty: uty -> 'a ty
 val expand_head: uty -> uty
 val instantiated_description: uty -> path * uty array * decl_description
 val extract_decl: uty -> (declaration * uty array) option
+val build_dynamic_head: (uty -> dynamic_head) -> uty -> dynamic_head
 
 val equal: uty -> uty -> bool
 val equal_path: path -> path -> bool

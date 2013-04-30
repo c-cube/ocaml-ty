@@ -96,6 +96,7 @@ type variance =
 type uty = {
   expr_id: int;
   mutable desc: description;
+  mutable head: head_cache;
 }
 
 and description =
@@ -139,6 +140,8 @@ and declaration = {
 and builder = uty array -> decl_description
 
 and declaration_cache = decl_description option ref
+and head_cache = dynamic_head option
+and dynamic_head = unit (* Will be Dynamic.head *)
 
 and decl_description =
   | DT_alias of uty
@@ -171,7 +174,7 @@ and scheme = {
 
 external new_expr_id: unit -> int = "caml_ty_new_expr_id"
 
-let make_expr desc = { expr_id = new_expr_id (); desc; }
+let make_expr desc = { expr_id = new_expr_id (); desc; head = None }
 
 let qualified_name decl = string_of_path decl.decl_id
 let internal_name decl = string_of_internal_path decl.decl_id
@@ -321,7 +324,8 @@ let list_decl =
       loc = ("*predef",0,0) }
   and expr =
     { expr_id = new_expr_id ();
-      desc = DT_constr (decl, [|params.(0)|], ref None ) }
+      desc = DT_constr (decl, [|params.(0)|], ref None );
+      head = None }
   and builder params =
     let rec kind =
       DT_variant
@@ -331,7 +335,8 @@ let list_decl =
           [| ("::", [|params.(0); expr|], None) |]; }
     and expr =
       { expr_id = new_expr_id ();
-        desc = DT_constr(decl, params, ref (Some kind)) } in
+        desc = DT_constr(decl, params, ref (Some kind));
+        head = None } in
     kind
   in
   decl
@@ -462,6 +467,15 @@ let expand_head ty =
       | _ -> assert false
       end
   | _ -> ty
+
+let build_dynamic_head builder ty =
+  (* Cache for Dynamic.head *)
+  match ty.head with
+  | Some head -> head
+  | None ->
+      let head = builder ty in
+      ty.head <- Some head;
+      head
 
 (** Equality *)
 
@@ -783,7 +797,7 @@ and print_row_field ppf (l, opt_amp, tyl) =
     else if tyl <> [] then fprintf ppf " of@ "
     else fprintf ppf ""
   in
-  fprintf ppf "@[<hv 2>`%s%t%a@]" l pr_of (print_typlist print_out_type " &")
+  fprintf ppf "@[<hv 2>%s%t%a@]" l pr_of (print_typlist print_out_type " &")
     tyl
 and print_typlist print_elem sep ppf =
   function
