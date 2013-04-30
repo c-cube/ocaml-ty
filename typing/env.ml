@@ -940,7 +940,7 @@ let rec prefix_idents root pos sub = function
       let p = Pdot(root, Ident.name id, pos) in
       let (pl, final_sub) = prefix_idents root (pos+1) sub rem in
       (p::pl, final_sub)
-  | Sig_module(id, mty, _) :: rem ->
+  | Sig_module(id, mty, _, _) :: rem ->
       let p = Pdot(root, Ident.name id, pos) in
       let (pl, final_sub) =
         prefix_idents root (pos+1) (Subst.add_module id p sub) rem in
@@ -970,8 +970,8 @@ let subst_signature sub sg =
           Sig_type(id, Subst.type_declaration sub decl, x)
       | Sig_exception(id, decl) ->
           Sig_exception (id, Subst.exception_declaration sub decl)
-      | Sig_module(id, mty, x) ->
-          Sig_module(id, Subst.modtype sub mty,x)
+      | Sig_module(id, mty, x, y) ->
+          Sig_module(id, Subst.modtype sub mty,x,y)
       | Sig_modtype(id, decl) ->
           Sig_modtype(id, Subst.modtype_declaration sub decl)
       | Sig_class(id, decl, x) ->
@@ -1127,7 +1127,9 @@ and components_of_module_maker (env, sub, path, mty, anchor, dynamic) =
             c.comp_constrs <-
               add_to_tbl s (cstr, !pos) c.comp_constrs;
             incr pos
-        | Sig_module(id, mty, _) ->
+        | Sig_module(id, mty, _, dynamic') ->
+            assert (not (dynamic && dynamic'));
+            let dynamic = dynamic || dynamic' in
             let mty' = EnvLazy.create (sub, mty) in
             c.comp_modules <-
               Tbl.add (Ident.name id) (mty', !pos) c.comp_modules;
@@ -1375,12 +1377,12 @@ and enter_cltype = enter store_cltype
 
 let add_item comp env =
   match comp with
-    Sig_value(id, decl)     -> add_value id decl env
-  | Sig_type(id, decl, _)   -> add_type id decl env
-  | Sig_exception(id, decl) -> add_exception id decl env
-  | Sig_module(id, mty, _)  -> add_module id mty env
-  | Sig_modtype(id, decl)   -> add_modtype id decl env
-  | Sig_class(id, decl, _)  -> add_class id decl env
+    Sig_value(id, decl)       -> add_value id decl env
+  | Sig_type(id, decl, _)     -> add_type id decl env
+  | Sig_exception(id, decl)   -> add_exception id decl env
+  | Sig_module(id, mty, _, _) -> add_module id mty env
+  | Sig_modtype(id, decl)     -> add_modtype id decl env
+  | Sig_class(id, decl, _)    -> add_class id decl env
   | Sig_class_type(id, decl, _) -> add_cltype id decl env
 
 let next_pos item pos =
@@ -1403,7 +1405,7 @@ let add_signature ?anchor sg env =
           | Sig_value(id, decl) -> add_value id decl env
           | Sig_type(id, decl, _) -> add_type id decl env
           | Sig_exception(id, decl) -> add_exception id decl env
-          | Sig_module(id, mty, _) -> add_module ?anchor id mty env
+          | Sig_module(id, mty, _, _) -> add_module ?anchor id mty env
           | Sig_modtype(id, decl) -> add_modtype id decl env
           | Sig_class(id, decl, _) -> add_class id decl env
           | Sig_class_type(id, decl, _) -> add_cltype id decl env
@@ -1436,7 +1438,8 @@ let open_signature root sg env =
               store_type (Ident.hide id) p decl env
           | Sig_exception(id, decl) ->
               store_exception (Ident.hide id) p decl env
-          | Sig_module(id, mty, _) ->
+          | Sig_module(id, mty, _, dynamic') ->
+              let dynamic = dynamic || dynamic' in
               let anchor = may_map (anchor_subcomponents id pos) anchor in
               store_module ?anchor ~dynamic (Ident.hide id) p mty env
           | Sig_modtype(id, decl) ->

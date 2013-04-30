@@ -115,7 +115,7 @@ let item_ident_name = function
     Sig_value(id, _) -> (id, Field_value(Ident.name id))
   | Sig_type(id, _, _) -> (id, Field_type(Ident.name id))
   | Sig_exception(id, _) -> (id, Field_exception(Ident.name id))
-  | Sig_module(id, _, _) -> (id, Field_module(Ident.name id))
+  | Sig_module(id, _, _, _) -> (id, Field_module(Ident.name id))
   | Sig_modtype(id, _) -> (id, Field_modtype(Ident.name id))
   | Sig_class(id, _, _) -> (id, Field_class(Ident.name id))
   | Sig_class_type(id, _, _) -> (id, Field_classtype(Ident.name id))
@@ -197,7 +197,7 @@ and signatures env cxt subst sig1 sig2 =
           | Sig_class_type(_,_,_) -> pos
           | Sig_value(_,_)
           | Sig_exception(_,_)
-          | Sig_module(_,_,_)
+          | Sig_module(_,_,_,_)
           | Sig_class(_, _,_) -> pos+1 in
         build_component_table nextpos
                               (Tbl.add name (id, item, pos) tbl) rem in
@@ -267,7 +267,8 @@ and signature_components env cxt subst = function
     :: rem ->
       exception_declarations env cxt subst id1 excdecl1 excdecl2;
       (pos, Tcoerce_none) :: signature_components env cxt subst rem
-  | (Sig_module(id1, mty1, _), Sig_module(id2, mty2, _), pos) :: rem ->
+  | (Sig_module(id1, mty1, _, d1), Sig_module(id2, mty2, _, d2), pos) :: rem ->
+      assert ((not d2) || d1);
       let cc =
         modtypes env (Module id1::cxt) subst
           (Mtype.strengthen env mty1 (Pident id1)) mty2 in

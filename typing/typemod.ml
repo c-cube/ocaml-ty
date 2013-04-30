@@ -105,8 +105,8 @@ let make_next_first rs rem =
     match rem with
       Sig_type (id, decl, Trec_next) :: rem ->
         Sig_type (id, decl, Trec_first) :: rem
-    | Sig_module (id, mty, Trec_next) :: rem ->
-        Sig_module (id, mty, Trec_first) :: rem
+    | Sig_module (id, mty, Trec_next, d) :: rem ->
+        Sig_module (id, mty, Trec_first, d) :: rem
     | _ -> rem
   else rem
 
@@ -165,14 +165,14 @@ let merge_constraint initial_env loc  sg lid constr =
         real_id := Some id;
         (Pident id, lid, Twith_typesubst tdecl),
         make_next_first rs rem
-    | (Sig_module(id, mty, rs) :: rem, [s], Pwith_module (lid))
+    | (Sig_module(id, mty, rs, d) :: rem, [s], Pwith_module (lid))
       when Ident.name id = s ->
         let (path, mty') = Typetexp.find_module initial_env loc lid.txt in
         let newmty = Mtype.strengthen env mty' path in
         ignore(Includemod.modtypes env newmty mty);
         (Pident id, lid, Twith_module (path, lid)),
-        Sig_module(id, newmty, rs) :: rem
-    | (Sig_module(id, mty, rs) :: rem, [s], Pwith_modsubst (lid))
+        Sig_module(id, newmty, rs, d) :: rem
+    | (Sig_module(id, mty, rs, d) :: rem, [s], Pwith_modsubst (lid))
       when Ident.name id = s ->
         let (path, mty') = Typetexp.find_module initial_env loc lid.txt in
         let newmty = Mtype.strengthen env mty' path in
@@ -180,12 +180,12 @@ let merge_constraint initial_env loc  sg lid constr =
         real_id := Some id;
         (Pident id, lid, Twith_modsubst (path, lid)),
         make_next_first rs rem
-    | (Sig_module(id, mty, rs) :: rem, s :: namelist, _)
+    | (Sig_module(id, mty, rs, d) :: rem, s :: namelist, _)
       when Ident.name id = s ->
         let ((path, path_loc, tcstr), newsg) =
           merge env (extract_sig env loc mty) namelist None in
         (path_concat id path, lid, tcstr),
-        Sig_module(id, Mty_signature newsg, rs) :: rem
+        Sig_module(id, Mty_signature newsg, rs, d) :: rem
     | (item :: rem, _, _) ->
         let (cstr, items) = merge (Env.add_item item env) rem namelist row_id
         in
@@ -294,7 +294,7 @@ and approx_sig env ssg =
       | Psig_module(name, smty) ->
           let mty = approx_modtype env smty in
           let (id, newenv) = Env.enter_module name.txt mty env in
-          Sig_module(id, mty, Trec_not) :: approx_sig newenv srem
+          Sig_module(id, mty, Trec_not, false) :: approx_sig newenv srem
       | Psig_recmodule sdecls ->
           let decls =
             List.map
@@ -304,7 +304,7 @@ and approx_sig env ssg =
           let newenv =
             List.fold_left (fun env (id, mty) -> Env.add_module id mty env)
             env decls in
-          map_rec (fun rs (id, mty) -> Sig_module(id, mty, rs)) decls
+          map_rec (fun rs (id, mty) -> Sig_module(id, mty, rs, false)) decls
                   (approx_sig newenv srem)
       | Psig_modtype(name, sinfo) ->
           let info = approx_modtype_info env sinfo in
@@ -367,7 +367,7 @@ let check cl loc set_ref name =
 let check_sig_item type_names module_names modtype_names loc = function
     Sig_type(id, _, _) ->
       check "type" loc type_names (Ident.name id)
-  | Sig_module(id, _, _) ->
+  | Sig_module(id, _, _, _) ->
       check "module" loc module_names (Ident.name id)
   | Sig_modtype(id, _) ->
       check "module type" loc modtype_names (Ident.name id)
@@ -487,7 +487,7 @@ and transl_signature env sg =
             let (id, newenv) = Env.enter_module name.txt mty env in
             let (trem, rem, final_env) = transl_sig newenv srem in
             mksig (Tsig_module (id, name, tmty)) env loc :: trem,
-            Sig_module(id, mty, Trec_not) :: rem,
+            Sig_module(id, mty, Trec_not, false) :: rem,
             final_env
         | Psig_recmodule sdecls ->
             List.iter
@@ -498,7 +498,8 @@ and transl_signature env sg =
               transl_recmodule_modtypes item.psig_loc env sdecls in
             let (trem, rem, final_env) = transl_sig newenv srem in
             mksig (Tsig_recmodule decls) env loc :: trem,
-            map_rec (fun rs (id, _, tmty) -> Sig_module(id, tmty.mty_type, rs))
+            map_rec (fun rs (id, _, tmty) ->
+              Sig_module(id, tmty.mty_type, rs, false))
               decls rem,
             final_env
         | Psig_modtype(name, sinfo) ->
@@ -639,7 +640,7 @@ let rec closed_modtype = function
 
 and closed_signature_item = function
     Sig_value(id, desc) -> Ctype.closed_schema desc.val_type
-  | Sig_module(id, mty, _) -> closed_modtype mty
+  | Sig_module(id, mty, _, _) -> closed_modtype mty
   | _ -> true
 
 let check_nongen_scheme env str =
@@ -668,7 +669,7 @@ let rec bound_value_identifiers = function
   | Sig_value(id, {val_kind = Val_reg}) :: rem ->
       id :: bound_value_identifiers rem
   | Sig_exception(id, decl) :: rem -> id :: bound_value_identifiers rem
-  | Sig_module(id, mty, _) :: rem -> id :: bound_value_identifiers rem
+  | Sig_module(id, mty, _, _) :: rem -> id :: bound_value_identifiers rem
   | Sig_class(id, decl, _) :: rem -> id :: bound_value_identifiers rem
   | _ :: rem -> bound_value_identifiers rem
 
@@ -781,14 +782,14 @@ let rec package_constraints env loc mty constrs =
           when List.mem_assoc [Ident.name id] constrs ->
             let ty = List.assoc [Ident.name id] constrs in
             Sig_type (id, {td with type_manifest = Some ty}, rs)
-        | Sig_module (id, mty, rs) ->
+        | Sig_module (id, mty, rs, d) ->
             let rec aux = function
               | (m :: ((_ :: _) as l), t) :: rest when m = Ident.name id ->
                   (l, t) :: aux rest
               | _ :: rest -> aux rest
               | [] -> []
             in
-            Sig_module (id, package_constraints env loc mty (aux constrs), rs)
+            Sig_module (id, package_constraints env loc mty (aux constrs), rs, d)
         | item -> item
       )
       sg
@@ -1010,11 +1011,12 @@ and type_structure ?(toplevel = false) funct_body anchor env sstr scope =
         let anchor = Env.anchor_submodule id anchor in
         let modl = type_module true funct_body (Some anchor) env smodl in
         let mty = enrich_module_type anchor name.txt modl.mod_type env in
-        let newenv = Env.add_module ~anchor id mty env in
+        let dynamic = Typedtree.is_dynamic modl in
+        let newenv = Env.add_module ~anchor ~dynamic id mty env in
         let item = mk (Tstr_module(id, name, modl, dynpath)) in
         let (str_rem, sig_rem, final_env) = type_struct newenv srem in
         (item :: str_rem,
-         Sig_module(id, modl.mod_type, Trec_not) :: sig_rem,
+         Sig_module(id, modl.mod_type, Trec_not, dynamic) :: sig_rem,
          final_env)
     | Pstr_recmodule sbind ->
         List.iter
@@ -1038,7 +1040,8 @@ and type_structure ?(toplevel = false) funct_body anchor env sstr scope =
         let item = mk (Tstr_recmodule (bindings2, Env.anchor anchor)) in
         let (str_rem, sig_rem, final_env) = type_struct newenv srem in
         (item :: str_rem,
-         map_rec (fun rs (id, _, _, modl) -> Sig_module(id, modl.mod_type, rs))
+         map_rec (fun rs (id, _, _, modl) ->
+           Sig_module(id, modl.mod_type, rs, false))
                  bindings2 sig_rem,
          final_env)
     | Pstr_modtype(name, smty) ->
@@ -1153,7 +1156,7 @@ and normalize_signature env = List.iter (normalize_signature_item env)
 
 and normalize_signature_item env = function
     Sig_value(id, desc) -> Ctype.normalize_type env desc.val_type
-  | Sig_module(id, mty, _) -> normalize_modtype env mty
+  | Sig_module(id, mty, _, _) -> normalize_modtype env mty
   | _ -> ()
 
 (* Simplify multiple specifications of a value or an exception in a signature.
@@ -1180,9 +1183,9 @@ and simplify_signature sg =
       simplif val_names (StringSet.add name exn_names)
               (if StringSet.mem name exn_names then res else component :: res)
               sg
-  | Sig_module(id, mty, rs) :: sg ->
+  | Sig_module(id, mty, rs, d) :: sg ->
       simplif val_names exn_names
-              (Sig_module(id, simplify_modtype mty, rs) :: res) sg
+              (Sig_module(id, simplify_modtype mty, rs, d) :: res) sg
   | component :: sg ->
       simplif val_names exn_names (component :: res) sg
   in
@@ -1337,7 +1340,7 @@ let rec package_signatures subst = function
       let sg' = Subst.signature subst sg in
       let oldid = Ident.create_persistent name
       and newid = Ident.create name in
-      Sig_module(newid, Mty_signature sg', Trec_not) ::
+      Sig_module(newid, Mty_signature sg', Trec_not, false) ::
       package_signatures (Subst.add_module oldid (Pident newid) subst) rem
 
 let package_units objfiles cmifile modulename =

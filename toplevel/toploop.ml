@@ -185,7 +185,7 @@ let rec pr_item env = function
   | Sig_exception(id, decl) :: rem ->
       let tree = Printtyp.tree_of_exception_declaration id decl in
       Some (tree, None, rem)
-  | Sig_module(id, mty, rs) :: rem ->
+  | Sig_module(id, mty, rs, _) :: rem ->
       let tree = Printtyp.tree_of_module id mty rs in
       Some (tree, None, rem)
   | Sig_modtype(id, decl) :: rem ->

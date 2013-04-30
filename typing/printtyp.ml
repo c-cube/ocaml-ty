@@ -1030,7 +1030,7 @@ and tree_of_signature_rec = function
             [Osig_type(tree_of_type_decl id decl, tree_of_rec rs)]
         | Sig_exception(id, decl) ->
             [tree_of_exception_declaration id decl]
-        | Sig_module(id, mty, rs) ->
+        | Sig_module(id, mty, rs, _) ->
             [Osig_module (Ident.name id, tree_of_modtype mty, tree_of_rec rs)]
         | Sig_modtype(id, decl) ->
             [tree_of_modtype_declaration id decl]

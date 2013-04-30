@@ -61,8 +61,8 @@ and strengthen_sig env sg p =
       Sig_type(id, newdecl, rs) :: strengthen_sig env rem p
   | (Sig_exception(id, d) as sigelt) :: rem ->
       sigelt :: strengthen_sig env rem p
-  | Sig_module(id, mty, rs) :: rem ->
-      Sig_module(id, strengthen env mty (Pdot(p, Ident.name id, nopos)), rs)
+  | Sig_module(id, mty, rs, d) :: rem ->
+      Sig_module(id, strengthen env mty (Pdot(p, Ident.name id, nopos)), rs, d)
       :: strengthen_sig (Env.add_module id mty env) rem p
       (* Need to add the module in case it defines manifest module types *)
   | Sig_modtype(id, decl) :: rem ->
@@ -119,8 +119,8 @@ let nondep_supertype env mid mty =
           let d = {exn_args = List.map (Ctype.nondep_type env mid) d.exn_args;
                    exn_loc = d.exn_loc} in
           Sig_exception(id, d) :: rem'
-      | Sig_module(id, mty, rs) ->
-          Sig_module(id, nondep_mty env va mty, rs) :: rem'
+      | Sig_module(id, mty, rs, d) ->
+          Sig_module(id, nondep_mty env va mty, rs, d) :: rem'
       | Sig_modtype(id, d) ->
           begin try
             Sig_modtype(id, nondep_modtype_decl env d) :: rem'
@@ -167,9 +167,9 @@ and enrich_item env p = function
     Sig_type(id, decl, rs) ->
       Sig_type(id,
                 enrich_typedecl env (Pdot(p, Ident.name id, nopos)) decl, rs)
-  | Sig_module(id, mty, rs) ->
+  | Sig_module(id, mty, rs, d) ->
       Sig_module(id,
-                  enrich_modtype env (Pdot(p, Ident.name id, nopos)) mty, rs)
+                  enrich_modtype env (Pdot(p, Ident.name id, nopos)) mty, rs, d)
   | item -> item
 
 let rec type_paths env p mty =
@@ -186,7 +186,7 @@ and type_paths_sig env p pos sg =
       type_paths_sig env p pos' rem
   | Sig_type(id, decl, _) :: rem ->
       Pdot(p, Ident.name id, nopos) :: type_paths_sig env p pos rem
-  | Sig_module(id, mty, _) :: rem ->
+  | Sig_module(id, mty, _, _) :: rem ->
       type_paths env (Pdot(p, Ident.name id, pos)) mty @
       type_paths_sig (Env.add_module id mty env) p (pos+1) rem
   | Sig_modtype(id, decl) :: rem ->
@@ -210,7 +210,7 @@ and no_code_needed_sig env sg =
       | Val_prim _ -> no_code_needed_sig env rem
       | _ -> false
       end
-  | Sig_module(id, mty, _) :: rem ->
+  | Sig_module(id, mty, _, _) :: rem ->
       no_code_needed env mty &&
       no_code_needed_sig (Env.add_module id mty env) rem
   | (Sig_type _ | Sig_modtype _ | Sig_class_type _) :: rem ->
