@@ -462,3 +462,11 @@ let rec alpha_pat env p = match p.pat_desc with
 
 let mkloc = Location.mkloc
 let mknoloc = Location.mknoloc
+
+let is_dynamic modl =
+  (* FIXME GRGR: unpack, non applicative functor application, ... ? *)
+  match modl.mod_desc with
+  | Tmod_unpack _ -> true
+  | _ -> false
+
+

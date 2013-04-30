@@ -841,7 +841,7 @@ let rec type_module sttn funct_body anchor env smod =
       let id = Ident.create name.txt in
       let arg_anchor = Env.named_anchor id in
       let newenv =
-        Env.add_module ~anchor:arg_anchor id mty.mty_type env in
+        Env.add_module ~anchor:arg_anchor ~dynamic:true id mty.mty_type env in
       let anchor = may_map (Env.anchor_functor (Pident id)) anchor in
       let body = type_module sttn true anchor newenv sbody in
       rm { mod_desc = Tmod_functor(id, name, mty, body);
@@ -1027,7 +1027,7 @@ and type_structure ?(toplevel = false) funct_body anchor env sstr scope =
           List.map2
             (fun (id, _, mty) (name, _, smodl) ->
               let (dynpath_id, anchor, parent) =
-                Env.anchor_recsubmodule env id mty.mty_type anchor in
+                Env.anchor_recsubmodule id anchor in
               let modl =
                 type_module true funct_body (Some anchor) newenv smodl in
               let mty' =

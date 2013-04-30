@@ -46,8 +46,8 @@ let rec env_from_summary sum subst =
           Env.add_type id (Subst.type_declaration subst desc) (env_from_summary s subst)
       | Env_exception(s, id, desc) ->
           Env.add_exception id (Subst.exception_declaration subst desc) (env_from_summary s subst)
-      | Env_module(s, id, desc, anchor) ->
-          Env.add_module ?anchor id (Subst.modtype subst desc) (env_from_summary s subst)
+      | Env_module(s, id, desc, anchor, dynamic) ->
+          Env.add_module ?anchor ~dynamic id (Subst.modtype subst desc) (env_from_summary s subst)
       | Env_modtype(s, id, desc) ->
           Env.add_modtype id (Subst.modtype_declaration subst desc) (env_from_summary s subst)
       | Env_class(s, id, desc) ->

@@ -2545,7 +2545,8 @@ and type_expect_ ?in_function env sexp ty_expected =
       let id = Ident.create name.txt in
       let anchor = Env.named_anchor id in
       let modl = !type_module (Some anchor) env smodl in
-      let new_env = Env.add_module ~anchor id modl.mod_type env in
+      let dynamic = Typedtree.is_dynamic modl in
+      let new_env = Env.add_module ~anchor ~dynamic id modl.mod_type env in
       Ctype.init_def(Ident.current_time());
       Typetexp.widen context;
       let body = type_expect new_env sbody ty_expected in
