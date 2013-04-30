@@ -94,3 +94,7 @@ let transl_dynpath_init_pack targetname names =
     Lambda.Lprim(Lambda.Psetglobal (Ident.dynpath modid),
                  [transl_dynpath Env.empty (Pdot (Pident id, name, nopos))]))
     names
+
+(** Type expressions and type declarations *)
+
+let transl_expr env loc ty = lambda_unit (* FIXME GRGR *)

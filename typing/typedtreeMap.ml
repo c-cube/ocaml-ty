@@ -344,6 +344,8 @@ module MakeMap(Map : MapArgument) = struct
           Texp_object (map_class_structure cl, string_list)
         | Texp_pack (mexpr) ->
           Texp_pack (map_module_expr mexpr)
+        | Texp_implicit ->
+          Texp_implicit
     in
     let exp_extra = List.map map_exp_extra exp.exp_extra in
     Map.leave_expression {

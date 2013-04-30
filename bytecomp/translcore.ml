@@ -876,6 +876,13 @@ and transl_exp0 e =
           cl_loc = e.exp_loc;
           cl_type = Cty_signature cty;
           cl_env = e.exp_env }
+  | Texp_implicit ->
+      match (Ctype.expand_head e.exp_env e.exp_type).desc with
+      | Tconstr(path, [ty], _) when Path.same path Predef.path_ty ->
+          Transltyrepr.transl_expr e.exp_env e.exp_loc ty
+      | _ ->
+          (* FIXME GRGR *)
+          failwith "TODO Error: unexpected type for Texp_implicit"
 
 and transl_list expr_list =
   List.map transl_exp expr_list

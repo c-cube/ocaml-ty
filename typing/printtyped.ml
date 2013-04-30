@@ -353,6 +353,8 @@ and expression i ppf x =
   | Texp_pack me ->
       line i ppf "Pexp_pack";
       module_expr i ppf me
+  | Texp_implicit ->
+      line i ppf "Pexp_implicit\n"
 
 and value_description i ppf x =
   line i ppf "value_description\n";
