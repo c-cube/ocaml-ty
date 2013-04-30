@@ -20,7 +20,7 @@ val initial: t
 val diff: t -> t -> Ident.t list
 
 type dynid =
-  | Anchored of Path.t * (Ident.t * t) option
+  | Anchored of Path.t * int * (Ident.t * t) option
   | Dynamic of Path.t
   | Newtype of Ident.t
   | Non_anchored

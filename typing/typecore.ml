@@ -2759,7 +2759,8 @@ and type_expect_ ?in_function ?(implicit = false)env sexp ty_expected =
         exp_extra = (Texp_open (path, lid, newenv), loc) :: exp.exp_extra;
       }
   | Pexp_type sty ->
-      let ty = Typetexp.transl_simple_type env false sty in
+      let ty =
+        Typetexp.transl_simple_type ~allow_external:true env false sty in
       let to_unify = Predef.type_ty ty.ctyp_type in
       unify_exp_types loc env to_unify ty_expected;
       rue {

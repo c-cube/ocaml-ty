@@ -145,6 +145,8 @@ let transl_declaration env (name, sdecl) id =
     sdecl.ptype_cstrs
   in
   let (tkind, kind) =
+    (* let transl_simple_type = transl_simple_type ~allow_external:true in
+       FIXME GRGR *)
     match sdecl.ptype_kind with
         Ptype_abstract -> Ttype_abstract, Type_abstract
       | Ptype_variant cstrs ->

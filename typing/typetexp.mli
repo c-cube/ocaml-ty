@@ -15,6 +15,7 @@
 open Types
 
 val transl_simple_type:
+        ?allow_external:bool ->
         Env.t -> bool -> Parsetree.core_type -> Typedtree.core_type
 val transl_simple_type_univars:
         Env.t -> Parsetree.core_type -> Typedtree.core_type
@@ -61,6 +62,8 @@ type error =
   | Unbound_modtype of Longident.t
   | Unbound_cltype of Longident.t
   | Ill_typed_functor_application of Longident.t
+  | Unexpected_caret
+  | Too_many_caret
 
 exception Error of Location.t * Env.t * error
 

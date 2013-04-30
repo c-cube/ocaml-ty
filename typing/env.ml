@@ -207,7 +207,7 @@ and functor_components = {
 }
 
 and dynid =
-  | Anchored of Path.t * (Ident.t * t) option
+  | Anchored of Path.t * int * (Ident.t * t) option
   | Dynamic of Path.t
   | Newtype of Ident.t
   | Non_anchored
@@ -215,6 +215,7 @@ and dynid =
 and 'env raw_anchor = {
   anchor_path: Path.t;
   anchor_external: (module_type * 'env * 'env raw_anchor) option;
+  anchor_struct: int;
   anchor_recpath: Path.t option;
 }
 
@@ -267,20 +268,24 @@ let named_anchor ?intf id =
   | None ->
       { anchor_path = Pident id;
         anchor_external = None;
+        anchor_struct = 1;
         anchor_recpath = None }
   | Some (intf_id, sg, env) ->
       let external_anchor =
         { anchor_path = Pident id;
           anchor_external = None;
+          anchor_struct = 1;
           anchor_recpath = None; } in
       { anchor_path = Pident intf_id;
         anchor_external = Some (Mty_signature sg, env, external_anchor);
+        anchor_struct = 1;
         anchor_recpath = None }
 
 let anonymous_anchor () =
   let id = Ident.create "" in
   (id, { anchor_path = Pident id;
          anchor_external = None;
+         anchor_struct = 1;
          anchor_recpath = None })
 
 (* Forward declarations *)
@@ -1038,13 +1043,14 @@ let anchor_structure = function
       let (id, anchor) = anonymous_anchor () in
       (Some id, anchor)
   | Some anchor ->
-      (None, anchor)
+      (None, { anchor with anchor_struct = anchor.anchor_struct + 1 })
 
 let anchor_functor param anchor =
   (* entering Pmod_functor *)
   (* or entering Env.components_of_functor_appl' *)
   { anchor_path = Papply(anchor.anchor_path, param);
     anchor_external = None;
+    anchor_struct = 1;
     anchor_recpath = None }
 
 let anchor_constraint env mty anchor =
@@ -1059,6 +1065,7 @@ let anchor_constraint env mty anchor =
   let anchor =
     { anchor_path = Pident id;
       anchor_external;
+      anchor_struct = 0;
       anchor_recpath } in
   (id, anchor, parent)
 
@@ -1088,6 +1095,7 @@ let rec external_submodules name ext =
 and anchor_module name path anchor =
   { anchor_path = path;
     anchor_external = external_submodules name anchor.anchor_external;
+    anchor_struct = anchor.anchor_struct;
     anchor_recpath = None }
 
 let anchor_subcomponents id pos anchor =
@@ -1114,6 +1122,7 @@ let anchor_recsubmodule env id mty anchor =
   let new_anchor =
     { anchor_path = Pident dynpath_id;
       anchor_external = Some (mty, env, anchor_module name (Pident id) anchor);
+      anchor_struct = 0;
       anchor_recpath = Some (Pident id) } in
   (dynpath_id, new_anchor, Pident id)
 
@@ -1159,7 +1168,7 @@ let external_type name ext =
 
 let anchor_type anchor id =
   let name = Ident.name id in
-  Anchored (Pdot(anchor.anchor_path, name, nopos),
+  Anchored (Pdot(anchor.anchor_path, name, nopos), anchor.anchor_struct,
             external_type name anchor.anchor_external)
 
 let type_dynid anchor dynamic pos id =

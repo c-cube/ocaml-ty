@@ -50,6 +50,8 @@ type error =
   | Unbound_modtype of Longident.t
   | Unbound_cltype of Longident.t
   | Ill_typed_functor_application of Longident.t
+  | Unexpected_caret
+  | Too_many_caret
 
 exception Error of Location.t * Env.t * error
 
@@ -213,7 +215,15 @@ type policy = Fixed | Extensible | Univars
 let ctyp ctyp_desc ctyp_type ctyp_env ctyp_loc =
   { ctyp_desc; ctyp_type; ctyp_env; ctyp_loc }
 
-let rec transl_type env policy styp =
+let rec max_caret env path =
+  match Env.find_type_dynid path env with
+  | Env.Anchored (_, ofs, None) -> ofs - 1
+  | Env.Anchored (_, ofs, Some (id, env)) ->
+      ofs + max_caret env (Path.Pident id)
+  | _ -> 0
+
+let rec transl_type ?(allow_external = false) env policy styp =
+  let transl_type = transl_type ~allow_external in
   let loc = styp.ptyp_loc in
   match styp.ptyp_desc with
     Ptyp_any ->
@@ -255,6 +265,8 @@ let rec transl_type env policy styp =
     let ty = newty (Ttuple (List.map (fun ctyp -> ctyp.ctyp_type) ctys)) in
     ctyp (Ttyp_tuple ctys) ty env loc
   | Ptyp_constr(lid, stl, ofs) ->
+      if ofs <> 0 && not allow_external then
+        raise(Error(styp.ptyp_loc, env, Unexpected_caret));
       let (path, decl) = find_type env styp.ptyp_loc lid.txt in
       if List.length stl <> decl.type_arity then
         raise(Error(styp.ptyp_loc, env,
@@ -280,7 +292,9 @@ let rec transl_type env policy styp =
       with Unify trace ->
         raise (Error(styp.ptyp_loc, env, Type_mismatch trace))
       end;
-        ctyp (Ttyp_constr (path, lid, args, ofs)) constr env loc
+      if allow_external && max_caret env path < ofs then
+        raise (Error(styp.ptyp_loc, env, Too_many_caret));
+      ctyp (Ttyp_constr (path, lid, args, ofs)) constr env loc
   | Ptyp_object fields ->
       let fields = List.map
           (fun pf ->
@@ -626,9 +640,10 @@ let globalize_used_variables env fixed =
           raise (Error(loc, env, Type_mismatch trace)))
       !r
 
-let transl_simple_type env fixed styp =
+let transl_simple_type ?allow_external env fixed styp =
   univars := []; used_variables := Tbl.empty;
-  let typ = transl_type env (if fixed then Fixed else Extensible) styp in
+  let typ =
+    transl_type ?allow_external env (if fixed then Fixed else Extensible) styp in
   globalize_used_variables env fixed ();
   make_fixed_univars typ.ctyp_type;
   typ
@@ -823,3 +838,7 @@ let report_error env ppf = function
       spellcheck ppf Env.fold_cltypes env lid;
   | Ill_typed_functor_application lid ->
       fprintf ppf "Ill-typed functor application %a" longident lid
+  | Unexpected_caret ->
+      fprintf ppf "Carets are not allowed here" (* FIXME GRGR *)
+  | Too_many_caret ->
+      fprintf ppf "Too many carets" (* FIXME GRGR *)
