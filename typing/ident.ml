@@ -36,6 +36,16 @@ let rename i =
   incr currentstamp;
   { i with stamp = !currentstamp }
 
+let dynpath i =
+  { i with name = i.name ^ ":dynpath" }
+
+let is_dynpath i =
+  let len = String.length i.name in
+  len >= 8 && String.sub i.name (len-8) 8 = ":dynpath"
+
+let tyrepr i =
+  { i with name = i.name ^ ":ty" }
+
 let name i = i.name
 
 let stamp i = i.stamp

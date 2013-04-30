@@ -398,6 +398,18 @@ let to_memory init_code fun_code =
   init();
   (code, code_size, reloc)
 
+let to_string init_code fun_code =
+  init();
+  emit init_code;
+  emit fun_code;
+  let code = String.create !out_position in
+  String.unsafe_blit !out_buffer 0 code 0 !out_position;
+  let reloc = List.rev !reloc_info
+  and code_size = !out_position in
+  init();
+  (code, code_size, reloc)
+
+
 (* Emission to a file for a packed library *)
 
 let to_packed_file outchan code =

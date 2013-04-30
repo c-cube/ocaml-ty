@@ -270,9 +270,17 @@ let make_absolute file =
   then Filename.concat (Sys.getcwd()) file
   else file
 
+(* GRGR FIXME *)
+
+let link_dynpath output_fun dynpath =
+  let init = Bytegen.compile_dynpath_init dynpath in
+  let (code, size, reloc) = Emitcode.to_string init [] in
+  Symtable.patch_object code reloc;
+  output_fun code
+
 (* Create a bytecode executable file *)
 
-let link_bytecode ppf tolink exec_name standalone =
+let link_bytecode ppf tolink dynpath exec_name standalone =
   (* Avoid the case where the specified exec output file is the same as
      one of the objects to be linked *)
   List.iter (function
@@ -316,6 +324,7 @@ let link_bytecode ppf tolink exec_name standalone =
     end;
     let output_fun = output_string outchan
     and currpos_fun () = pos_out outchan - start_code in
+    link_dynpath output_fun dynpath;
     List.iter (link_file ppf output_fun currpos_fun) tolink;
     if standalone then Dll.close_all_dlls();
     (* The final STOP instruction *)
@@ -415,7 +424,7 @@ let output_cds_file outfile =
 
 (* Output a bytecode executable as a C file *)
 
-let link_bytecode_as_c ppf tolink outfile =
+let link_bytecode_as_c ppf tolink dynpath outfile =
   let outchan = open_out outfile in
   begin try
     (* The bytecode *)
@@ -437,6 +446,7 @@ let link_bytecode_as_c ppf tolink outfile =
       output_code_string outchan code;
       currpos := !currpos + String.length code
     and currpos_fun () = !currpos in
+    link_dynpath output_fun dynpath;
     List.iter (link_file ppf output_fun currpos_fun) tolink;
     (* The final STOP instruction *)
     Printf.fprintf outchan "\n0x%x};\n\n" Opcodes.opSTOP;
@@ -514,13 +524,21 @@ let link ppf objfiles output_name =
   Clflags.ccobjs := !Clflags.ccobjs @ !lib_ccobjs; (* put user's libs last *)
   Clflags.ccopts := !lib_ccopts @ !Clflags.ccopts; (* put user's opts first *)
   Clflags.dllibs := !lib_dllibs @ !Clflags.dllibs; (* put user's DLLs first *)
+  let dynpath =
+    IdentSet.fold (fun id acc ->
+      if Ident.is_dynpath id then
+        let name = Ident.name id in
+        Ident.create_persistent
+          (String.sub name 0 (String.length name - 8)) :: acc
+      else acc)
+      !missing_globals [] in
   if not !Clflags.custom_runtime then
-    link_bytecode ppf tolink output_name true
+    link_bytecode ppf tolink dynpath output_name true
   else if not !Clflags.output_c_object then begin
     let bytecode_name = Filename.temp_file "camlcode" "" in
     let prim_name = Filename.temp_file "camlprim" ".c" in
     try
-      link_bytecode ppf tolink bytecode_name false;
+      link_bytecode ppf tolink dynpath bytecode_name false;
       let poc = open_out prim_name in
       output_string poc "\
         #ifdef __cplusplus\n\
@@ -558,7 +576,7 @@ let link ppf objfiles output_name =
     if Sys.file_exists c_file then raise(Error(File_exists c_file));
     let temps = ref [] in
     try
-      link_bytecode_as_c ppf tolink c_file;
+      link_bytecode_as_c ppf tolink dynpath c_file;
       if not (Filename.check_suffix output_name ".c") then begin
         temps := c_file :: !temps;
         if Ccomp.compile_file c_file <> 0 then raise(Error Custom_runtime);

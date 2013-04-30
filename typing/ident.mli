@@ -35,6 +35,11 @@ val hide: t -> t
            but stamp different from any stamp returned by new.
            When put in a 'a tbl, this identifier can only be looked
            up by name. *)
+val dynpath: t -> t
+val is_dynpath: t -> bool
+        (* Compute from the identifier of a module or a type the
+           identifier of its dynamic path (same stamp, suffixed
+           name). *)
 
 val make_global: t -> unit
 val global: t -> bool

@@ -29,6 +29,15 @@ val to_memory: instruction list -> instruction list ->
              block of relocatable bytecode
              size of this block
              relocation information *)
+val to_string: instruction list -> instruction list ->
+                    string * int * (reloc_info * int) list
+        (* Arguments:
+             initialization code (terminated by STOP)
+             function code
+           Results:
+             block of relocatable bytecode (heap allocated)
+             size of this block
+             relocation information *)
 val to_packed_file:
   out_channel -> instruction list -> (reloc_info * int) list
         (* Arguments:

@@ -209,6 +209,7 @@ let rec item_list env = function
 (* The current typing environment for the toplevel *)
 
 let toplevel_env = ref Env.empty
+let toplevel_path = Ident.create ":toplevel"
 
 (* Print an exception produced by an evaluation *)
 
@@ -433,7 +434,9 @@ let set_paths () =
   Dll.add_path !load_path
 
 let initialize_toplevel_env () =
-  toplevel_env := Compile.initial_env()
+  toplevel_env := Compile.initial_env();
+  setvalue (Ident.name (Ident.dynpath toplevel_path))
+           (Obj.repr (CamlinternalTy.toplevel_path))
 
 (* The interactive loop *)
 
@@ -474,6 +477,6 @@ let run_script ppf name args =
   Obj.truncate (Obj.repr Sys.argv) len;
   Arg.current := 0;
   Compile.init_path();
-  toplevel_env := Compile.initial_env();
+  initialize_toplevel_env ();
   Sys.interactive := false;
   use_silently ppf name

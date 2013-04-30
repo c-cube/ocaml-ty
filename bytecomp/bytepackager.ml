@@ -157,10 +157,11 @@ let rec rename_append_bytecode_list ppf packagename oc mapping defined ofs
           rename_append_bytecode_list ppf packagename oc mapping defined ofs
                                       prefix subst rem
       | PM_impl compunit ->
+          let id = Ident.create_persistent m.pm_name in
+          let defined = Ident.dynpath id :: defined in
           let size =
             rename_append_bytecode ppf packagename oc mapping defined ofs
                                    prefix subst m.pm_file compunit in
-          let id = Ident.create_persistent m.pm_name in
           let root = Path.Pident (Ident.create_persistent prefix) in
           rename_append_bytecode_list ppf packagename oc mapping (id :: defined)
             (ofs + size) prefix
@@ -187,6 +188,13 @@ let build_global_target oc target_name members mapping pos coercion =
     Emitcode.to_packed_file oc instrs in
   relocs := List.map (fun (r, ofs) -> (r, pos + ofs)) rel @ !relocs
 
+(* GRGR FIXME description *)
+
+let package_dynpath_init oc targetname names =
+  let init = Bytegen.compile_dynpath_init_pack targetname names in
+  let reloc = Emitcode.to_packed_file oc init in
+  relocs := reloc @ !relocs
+
 (* Build the .cmo file obtained by packaging the given .cmo files. *)
 
 let package_object_files ppf files targetfile targetname coercion =
@@ -200,13 +208,20 @@ let package_object_files ppf files targetfile targetname coercion =
           (Ident.create_persistent name,
            Ident.create_persistent(targetname ^ "." ^ name)))
       unit_names in
+  let full_mapping =
+    mapping
+    @ List.map (fun (id1, id2) ->
+         (Ident.dynpath id1, Ident.dynpath id2))
+          mapping in
   let oc = open_out_bin targetfile in
   try
     output_string oc Config.cmo_magic_number;
     let pos_depl = pos_out oc in
     output_binary_int oc 0;
     let pos_code = pos_out oc in
-    let ofs = rename_append_bytecode_list ppf targetname oc mapping [] 0
+    package_dynpath_init oc targetname unit_names;
+    let ofs = pos_out oc - pos_code in
+    let ofs = rename_append_bytecode_list ppf targetname oc full_mapping [] ofs
                                           targetname Subst.identity members in
     build_global_target oc targetname members mapping ofs coercion;
     let pos_debug = pos_out oc in

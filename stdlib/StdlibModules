@@ -25,6 +25,7 @@ STDLIB_MODULES=\
   camlinternalLazy \
   camlinternalMod \
   camlinternalOO \
+  camlinternalTy \
   char \
   complex \
   digest \

@@ -17,3 +17,5 @@ open Instruct
 
 val compile_implementation: string -> lambda -> instruction list
 val compile_phrase: lambda -> instruction list * instruction list
+val compile_dynpath_init: Ident.t list -> instruction list
+val compile_dynpath_init_pack: string -> string list -> instruction list

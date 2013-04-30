@@ -890,3 +890,25 @@ let compile_phrase expr =
   let init_code = comp_block empty_env expr 1 [Kreturn 1] in
   let fun_code = comp_remainder [] in
   (init_code, fun_code)
+
+(***** FIXME GRGR *******)
+
+let compile_dynpath_init ids =
+  Stack.clear functions_to_compile;
+  label_counter := 0;
+  sz_static_raises := [];
+  compunit_name := ":dynpath";
+  let expr = Transltyrepr.transl_dynpath_init ids in
+  let init_code = comp_block empty_env expr 0 [] in
+  assert (Stack.length functions_to_compile = 0);
+  init_code
+
+let compile_dynpath_init_pack targetname names =
+  Stack.clear functions_to_compile;
+  label_counter := 0;
+  sz_static_raises := [];
+  compunit_name := targetname ^ ":dynpath";
+  let expr = Transltyrepr.transl_dynpath_init_pack targetname names in
+  let init_code = comp_block empty_env expr 0 [] in
+  assert (Stack.length functions_to_compile = 0);
+  init_code

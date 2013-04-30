@@ -6,6 +6,7 @@ callback.cmi :
 camlinternalLazy.cmi :
 camlinternalMod.cmi : obj.cmi
 camlinternalOO.cmi : obj.cmi
+camlinternalTy.cmi :
 char.cmi :
 complex.cmi :
 digest.cmi :
@@ -64,6 +65,8 @@ camlinternalOO.cmo : sys.cmi string.cmi obj.cmi map.cmi list.cmi char.cmi \
     callback.cmi array.cmi camlinternalOO.cmi
 camlinternalOO.cmx : sys.cmx string.cmx obj.cmx map.cmx list.cmx char.cmx \
     callback.cmx array.cmx camlinternalOO.cmi
+camlinternalTy.cmo : camlinternalTy.cmi
+camlinternalTy.cmx : camlinternalTy.cmi
 char.cmo : char.cmi
 char.cmx : char.cmi
 complex.cmo : complex.cmi
@@ -174,6 +177,8 @@ camlinternalOO.cmo : sys.cmi string.cmi obj.cmi map.cmi list.cmi char.cmi \
     callback.cmi array.cmi camlinternalOO.cmi
 camlinternalOO.p.cmx : sys.p.cmx string.p.cmx obj.p.cmx map.p.cmx list.p.cmx char.p.cmx \
     callback.p.cmx array.p.cmx camlinternalOO.cmi
+camlinternalTy.cmo : camlinternalTy.cmi
+camlinternalTy.p.cmx : camlinternalTy.cmi
 char.cmo : char.cmi
 char.p.cmx : char.cmi
 complex.cmo : complex.cmi
