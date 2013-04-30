@@ -16,6 +16,7 @@ case $1 in
   pervasives.cm[iox]|pervasives.p.cmx) echo ' -nopervasives';;
   camlinternalOO.cmi) echo ' -nopervasives';;
   camlinternalOO.cmx|camlinternalOO.p.cmx) echo ' -inline 0';;
+  camlinternalTy.cm[ox]) echo ' -w -37';;
   buffer.cm[io]|printf.cm[io]|format.cm[io]|scanf.cm[io]) echo ' -w A';;
   scanf.cmx|scanf.p.cmx) echo ' -inline 9';;
   arrayLabels.cm[ox]|arrayLabels.p.cmx) echo ' -nolabels';;
