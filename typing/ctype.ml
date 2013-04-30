@@ -2096,6 +2096,15 @@ let add_gadt_equation env source destination =
   env := Env.add_local_constraint source decl newtype_level !env;
   cleanup_abbrev ()
 
+let propagate_newtype_repr env source destination =
+  try
+    let source_dynid = Env.find_type_dynid (Path.Pident source) !env in
+    let dest_dynid = Env.find_type_dynid (Path.Pident destination) !env in
+    let dest_decl = Env.find_type (Path.Pident destination) !env in
+    if source_dynid <> Env.Non_anchored && dest_dynid = Env.Non_anchored then
+      env := Env.add_type ~dynid:source_dynid destination dest_decl !env
+  with Not_found -> assert false
+
 let unify_eq_set = TypePairs.create 11
 
 let order_type_pair t1 t2 =
@@ -2249,11 +2258,12 @@ and unify3 env t1 t1' t2 t2' =
          Tconstr ((Path.Pident p') as path',[],_))
         when is_abstract_newtype !env path && is_abstract_newtype !env path'
         && !generate_equations ->
-          let source,destination =
+          let (source, destination_path, destination) =
             if find_newtype_level !env path > find_newtype_level !env path'
-            then  p,t2'
-            else  p',t1'
-          in add_gadt_equation env source destination
+            then (p, p', t2')
+            else (p', p, t1') in
+          add_gadt_equation env source destination;
+          propagate_newtype_repr env source destination_path
       | (Tconstr ((Path.Pident p) as path,[],_), _)
         when is_abstract_newtype !env path && !generate_equations ->
           reify env t2';
