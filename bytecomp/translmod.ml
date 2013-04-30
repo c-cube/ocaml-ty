@@ -418,13 +418,21 @@ let _ =
 
 (* Compile an implementation *)
 
-let transl_implementation module_name (str, cc) =
+let transl_implementation module_name (id, str, cc) =
   reset_labels ();
   primitive_declarations := [];
   let module_id = Ident.create_persistent module_name in
-  Lprim(Psetglobal module_id,
-        [transl_label_init
-           (transl_struct [] cc (global_path module_id) str)])
+  let body =
+    Lprim(Psetglobal module_id,
+          [transl_label_init
+             (transl_struct [] cc (global_path module_id) str)]) in
+  match id with
+  | None -> body
+  | Some id ->
+      Llet(Strict, Ident.dynpath id,
+           Transltyrepr.dynpath_new_coercion_id
+             str.str_final_env (Some (Pident module_id)),
+           body)
 
 (* Build the list of value identifiers defined by a toplevel structure
    (excluding primitive declarations). *)

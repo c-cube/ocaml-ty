@@ -758,4 +758,4 @@ let interface ppf x = list 0 signature_item ppf x.sig_items;;
 
 let implementation ppf x = list 0 structure_item ppf x.str_items;;
 
-let implementation_with_coercion ppf (x, _) = implementation ppf x
+let implementation_with_coercion ppf (_, x, _) = implementation ppf x

@@ -685,7 +685,8 @@ let enrich_type_decls anchor decls oldenv newenv =
             Mtype.enrich_typedecl oldenv (Pdot(p, Ident.name id, nopos))
               info.typ_type
           in
-          Env.add_type id info' e)
+          let dynid = Env.anchor_type anchor id in
+          Env.add_type ~dynid id info' e)
         oldenv decls
 
 let enrich_module_type anchor name mty env =
@@ -883,7 +884,8 @@ let rec type_module sttn funct_body anchor env smod =
       end
   | Pmod_constraint(sarg, smty) ->
       let mty = transl_modtype env smty in
-      let (dynid, anchor, parent) = Env.anchor_constraint anchor in
+      let (dynid, anchor, parent) =
+        Env.anchor_constraint env mty.mty_type anchor in
       let arg = type_module true funct_body (Some anchor) env sarg in
       let modl = wrap_constraint env arg mty.mty_type
                                  (Tmodtype_explicit (mty, dynid, parent)) in
@@ -979,7 +981,8 @@ and type_structure ?(toplevel = false) funct_body anchor env sstr scope =
         List.iter
           (fun (name, decl) -> check "type" loc type_names name.txt)
           sdecls;
-        let (decls, newenv) = Typedecl.transl_type_decl env sdecls in
+        let (decls, newenv) =
+          Typedecl.transl_type_decl ~anchor env sdecls in
         let item = mk (Tstr_type decls) in
         let newenv' =
           enrich_type_decls anchor decls env newenv in
@@ -1029,7 +1032,7 @@ and type_structure ?(toplevel = false) funct_body anchor env sstr scope =
           List.map2
             (fun (id, _, mty) (name, _, smodl) ->
               let (dynpath_id, anchor, parent) =
-                Env.anchor_recsubmodule id anchor in
+                Env.anchor_recsubmodule env id mty.mty_type anchor in
               let modl =
                 type_module true funct_body (Some anchor) newenv smodl in
               let mty' =
@@ -1270,18 +1273,10 @@ let () =
 let type_implementation sourcefile outputprefix modulename initial_env ast =
   Cmt_format.set_saved_types [];
   try
-  Typecore.reset_delayed_checks ();
-  let anchor = Env.named_anchor (Ident.create_persistent modulename) in
-  let (str, sg, finalenv) =
-    type_structure anchor initial_env ast (Location.in_file sourcefile) in
-  let simple_sg = simplify_signature sg in
-  if !Clflags.print_types then begin
-    Printtyp.wrap_printing_env initial_env
-      (fun () -> fprintf std_formatter "%a@." Printtyp.signature simple_sg);
-    (str, Tcoerce_none)   (* result is ignored by Compile.implementation *)
-  end else begin
+    Typecore.reset_delayed_checks ();
     let sourceintf =
       Misc.chop_extension_if_any sourcefile ^ !Config.interface_suffix in
+    let modid = Ident.create_persistent modulename in
     if Sys.file_exists sourceintf then begin
       let intf_file =
         try
@@ -1290,34 +1285,56 @@ let type_implementation sourcefile outputprefix modulename initial_env ast =
           raise(Error(Location.in_file sourcefile, Env.empty,
                       Interface_not_compiled sourceintf)) in
       let dclsig = Env.read_signature modulename intf_file in
-      let coercion = Includemod.compunit sourcefile sg intf_file dclsig in
-      Typecore.force_delayed_checks ();
-      (* It is important to run these checks after the inclusion test above,
-         so that value declarations which are not used internally but exported
-         are not reported as being unused. *)
-      Cmt_format.save_cmt (outputprefix ^ ".cmt") modulename
-        (Cmt_format.Implementation str) (Some sourcefile) initial_env None;
-      (str, coercion)
+      let dynid = Ident.create "" in
+      let anchor = Env.named_anchor ~intf:(dynid, dclsig, initial_env) modid in
+      let (str, sg, finalenv) =
+        type_structure anchor initial_env ast (Location.in_file sourcefile) in
+      let simple_sg = simplify_signature sg in
+      if !Clflags.print_types then begin
+        Printtyp.wrap_printing_env initial_env
+          (fun () -> fprintf std_formatter "%a@." Printtyp.signature simple_sg);
+        (* result is ignored by Compile.implementation *)
+        (None, str, Tcoerce_none)
+      end else begin
+        let coercion = Includemod.compunit sourcefile sg intf_file dclsig in
+        Typecore.force_delayed_checks ();
+        (* It is important to run these checks after the inclusion test above,
+           so that value declarations which are not used internally but exported
+           are not reported as being unused. *)
+        Cmt_format.save_cmt (outputprefix ^ ".cmt") modulename
+          (Cmt_format.Implementation str) (Some sourcefile) initial_env None;
+        (Some dynid, str, coercion)
+      end
     end else begin
-      check_nongen_schemes finalenv str.str_items;
-      normalize_signature finalenv simple_sg;
-      let coercion =
-        Includemod.compunit sourcefile sg
-                            "(inferred signature)" simple_sg in
-      Typecore.force_delayed_checks ();
-      (* See comment above. Here the target signature contains all
-         the value being exported. We can still capture unused
-         declarations like "let x = true;; let x = 1;;", because in this
-         case, the inferred signature contains only the last declaration. *)
-      if not !Clflags.dont_write_files then begin
-        let sg =
-          Env.save_signature simple_sg modulename (outputprefix ^ ".cmi") in
-        Cmt_format.save_cmt  (outputprefix ^ ".cmt") modulename
-          (Cmt_format.Implementation str)
-          (Some sourcefile) initial_env (Some sg);
-      end;
-      (str, coercion)
-    end
+      let anchor = Env.named_anchor modid in
+      let (str, sg, finalenv) =
+        type_structure anchor initial_env ast (Location.in_file sourcefile) in
+      let simple_sg = simplify_signature sg in
+      if !Clflags.print_types then begin
+        Printtyp.wrap_printing_env initial_env
+          (fun () -> fprintf std_formatter "%a@." Printtyp.signature simple_sg);
+        (* result is ignored by Compile.implementation *)
+        (None, str, Tcoerce_none)
+      end else begin
+        check_nongen_schemes finalenv str.str_items;
+        normalize_signature finalenv simple_sg;
+        let coercion =
+          Includemod.compunit sourcefile sg
+            "(inferred signature)" simple_sg in
+        Typecore.force_delayed_checks ();
+        (* See comment above. Here the target signature contains all
+           the value being exported. We can still capture unused
+           declarations like "let x = true;; let x = 1;;", because in this
+           case, the inferred signature contains only the last declaration. *)
+        if not !Clflags.dont_write_files then begin
+          let sg =
+            Env.save_signature simple_sg modulename (outputprefix ^ ".cmi") in
+          Cmt_format.save_cmt  (outputprefix ^ ".cmt") modulename
+            (Cmt_format.Implementation str)
+            (Some sourcefile) initial_env (Some sg);
+        end;
+        (None, str, coercion)
+      end
     end
   with e ->
     Cmt_format.save_cmt  (outputprefix ^ ".cmt") modulename
@@ -1364,6 +1381,7 @@ let package_units objfiles cmifile modulename =
   let prefix = chop_extension_if_any cmifile in
   let mlifile = prefix ^ !Config.interface_suffix in
   if Sys.file_exists mlifile then begin
+    (* GRGR FIXME : transparent packing ??? *)
     if not (Sys.file_exists cmifile) then begin
       raise(Error(Location.in_file mlifile, Env.empty,
                   Interface_not_compiled mlifile))

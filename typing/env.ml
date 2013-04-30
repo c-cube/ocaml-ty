@@ -98,22 +98,6 @@ end  = struct
 
 end
 
-type anchor = {
-  anchor_path: Path.t;
-  anchor_recpath: Path.t option;
-}
-
-type summary =
-    Env_empty
-  | Env_value of summary * Ident.t * value_description
-  | Env_type of summary * Ident.t * type_declaration
-  | Env_exception of summary * Ident.t * exception_declaration
-  | Env_module of summary * Ident.t * module_type * anchor option * bool
-  | Env_modtype of summary * Ident.t * modtype_declaration
-  | Env_class of summary * Ident.t * class_declaration
-  | Env_cltype of summary * Ident.t * class_type_declaration
-  | Env_open of summary * Path.t
-
 module EnvTbl =
   struct
     (* A table indexed by identifier, with an extra slot to record usage. *)
@@ -160,11 +144,22 @@ module EnvTbl =
 type type_descriptions =
     constructor_description list * label_description list
 
-type t = {
+type summary =
+    Env_empty
+  | Env_value of summary * Ident.t * value_description
+  | Env_type of summary * Ident.t * type_declaration * dynid
+  | Env_exception of summary * Ident.t * exception_declaration
+  | Env_module of summary * Ident.t * module_type * anchor_summary option * bool
+  | Env_modtype of summary * Ident.t * modtype_declaration
+  | Env_class of summary * Ident.t * class_declaration
+  | Env_cltype of summary * Ident.t * class_type_declaration
+  | Env_open of summary * Path.t
+
+and t = {
   values: (Path.t * value_description) EnvTbl.t;
   constrs: constructor_description EnvTbl.t;
   labels: label_description EnvTbl.t;
-  types: (Path.t * (type_declaration * type_descriptions)) EnvTbl.t;
+  types: (Path.t * (type_declaration * type_descriptions * dynid)) EnvTbl.t;
   modules: (Path.t * module_type) EnvTbl.t;
   modtypes: (Path.t * modtype_declaration) EnvTbl.t;
   components: (Path.t * module_components) EnvTbl.t;
@@ -189,7 +184,7 @@ and structure_components = {
   mutable comp_constrs: (string, (constructor_description * int) list) Tbl.t;
   mutable comp_labels: (string, (label_description * int) list) Tbl.t;
   mutable comp_types:
-   (string, ((type_declaration * type_descriptions) * int)) Tbl.t;
+   (string, ((type_declaration * type_descriptions * dynid) * int)) Tbl.t;
   mutable comp_modules:
    (string, ((Subst.t * module_type, module_type) EnvLazy.t * int)) Tbl.t;
   mutable comp_modtypes: (string, (modtype_declaration * int)) Tbl.t;
@@ -210,6 +205,21 @@ and functor_components = {
   fcomp_dynamic: bool;
   fcomp_cache: (Path.t, module_components) Hashtbl.t; (* For memoization *)
 }
+
+and dynid =
+  | Anchored of Path.t * (Ident.t * t) option
+  | Dynamic of Path.t
+  | Newtype of Ident.t
+  | Non_anchored
+
+and 'env raw_anchor = {
+  anchor_path: Path.t;
+  anchor_external: (module_type * 'env * 'env raw_anchor) option;
+  anchor_recpath: Path.t option;
+}
+
+and anchor_summary = summary raw_anchor
+and anchor = t raw_anchor
 
 let subst_modtype_maker (subst, mty) = Subst.modtype subst mty
 
@@ -252,13 +262,25 @@ let diff env1 env2 =
 
 (* Anchors creation *)
 
-let named_anchor id =
-  { anchor_path = Pident id;
-    anchor_recpath = None }
+let named_anchor ?intf id =
+  match intf with
+  | None ->
+      { anchor_path = Pident id;
+        anchor_external = None;
+        anchor_recpath = None }
+  | Some (intf_id, sg, env) ->
+      let external_anchor =
+        { anchor_path = Pident id;
+          anchor_external = None;
+          anchor_recpath = None; } in
+      { anchor_path = Pident intf_id;
+        anchor_external = Some (Mty_signature sg, env, external_anchor);
+        anchor_recpath = None }
 
 let anonymous_anchor () =
   let id = Ident.create "" in
   (id, { anchor_path = Pident id;
+         anchor_external = None;
          anchor_recpath = None })
 
 (* Forward declarations *)
@@ -452,9 +474,11 @@ and find_cltype =
   find (fun env -> env.cltypes) (fun sc -> sc.comp_cltypes)
 
 let find_type p env =
-  fst (find_type_full p env)
+  fst3 (find_type_full p env)
 let find_type_descrs p env =
-  snd (find_type_full p env)
+  snd3 (find_type_full p env)
+let find_type_dynid p env =
+  thd3 (find_type_full p env)
 
 (* Find the manifest type associated to a type when appropriate:
    - the type should be public or should have a private row,
@@ -522,7 +546,8 @@ let find_module_anchor p env =
   | Functor_comps f -> (f.fcomp_anchor, f.fcomp_dynamic)
 
 let find_module_dynid p env =
-  match fst (find_module_anchor p env) with
+  let (anchor, _) = find_module_anchor p env in
+  match anchor with
   | Some anchor -> anchor.anchor_path
   | None -> invalid_arg "Env.find_module_dynid"
 
@@ -720,7 +745,7 @@ let lookup_value lid env =
   r
 
 let lookup_type lid env =
-  let (path, (decl, _)) = lookup_type lid env in
+  let (path, (decl, _, _)) = lookup_type lid env in
   mark_type_used (Longident.last lid) decl;
   (path, decl)
 
@@ -1019,34 +1044,62 @@ let anchor_functor param anchor =
   (* entering Pmod_functor *)
   (* or entering Env.components_of_functor_appl' *)
   { anchor_path = Papply(anchor.anchor_path, param);
+    anchor_external = None;
     anchor_recpath = None }
 
-let anchor_constraint anchor =
+let anchor_constraint env mty anchor =
   (* entering Pmod_constraint *)
   let id = Ident.create "" in
   let parent = may_map (fun anchor -> anchor.anchor_path) anchor in
+  let anchor_external = may_map (fun anchor -> (mty, env, anchor)) anchor in
   let anchor_recpath =
     match anchor with
     | None -> None
     | Some anchor -> anchor.anchor_recpath in
   let anchor =
     { anchor_path = Pident id;
+      anchor_external;
       anchor_recpath } in
   (id, anchor, parent)
 
 (* Dynamic context 'traversal': hook used in Typemod.type_structure *)
 
+let rec find_module_in_sig name items =
+  match items with
+  | [] -> raise Not_found
+  | Sig_module (id, mty, _, _) :: _ when Ident.name id = name -> mty
+  | _ :: items -> find_module_in_sig name items
+
+let rec external_submodules name ext =
+  match ext with
+  | None -> None
+  | Some (mty, env, anchor) ->
+      match scrape_modtype mty env with
+      | Mty_ident _ | Mty_functor _ -> None
+      | Mty_signature sg ->
+          try
+            let new_mty = find_module_in_sig name sg in
+            let new_env = !add_signature' ~anchor sg env in
+            let new_path = Pdot(anchor.anchor_path, name, nopos) in
+            let new_anchor = anchor_module name new_path anchor in
+            Some (new_mty, new_env, new_anchor)
+          with Not_found -> None
+
+and anchor_module name path anchor =
+  { anchor_path = path;
+    anchor_external = external_submodules name anchor.anchor_external;
+    anchor_recpath = None }
+
 let anchor_subcomponents id pos anchor =
   (* entering Sig_module in Env.components_of_module_maker *)
   let name = Ident.name id in
-  { anchor_path = Pdot(anchor.anchor_path, name, pos);
-    anchor_recpath = None }
+  anchor_module name (Pdot(anchor.anchor_path, name, pos)) anchor
 
 let anchor_submodule id anchor =
   (* entering Pstr_module in Typemod_type_structure *)
   let name = Ident.name id in
-  { anchor_path = Pident id;
-    anchor_recpath =
+  { (anchor_module name (Pident id) anchor)
+    with anchor_recpath =
       may_map (fun p -> Pdot(p, name, nopos)) anchor.anchor_recpath }
 
 let anchor_toplevel_phrase anchor =
@@ -1054,19 +1107,72 @@ let anchor_toplevel_phrase anchor =
   { anchor with
     anchor_path = Pdot(anchor.anchor_path, name, nopos) }
 
-let anchor_recsubmodule id anchor =
+let anchor_recsubmodule env id mty anchor =
   (* entering a binding from Pstr_recmodule *)
   let name = Ident.name id in
   let dynpath_id = Ident.create name in
   let new_anchor =
     { anchor_path = Pident dynpath_id;
+      anchor_external = Some (mty, env, anchor_module name (Pident id) anchor);
       anchor_recpath = Some (Pident id) } in
   (dynpath_id, new_anchor, Pident id)
+
+let rec anchor_summary anchor =
+  { anchor with
+    anchor_external =
+      may_map (fun (mty, env, anchor) ->
+        (mty, env.summary, anchor_summary anchor))
+        anchor.anchor_external }
+
+let anchor_from_summary env_from_summary subst anchor =
+  let rec rebuild anchor =
+    { anchor with
+      anchor_external =
+        may_map (fun (mty, sum, sum_anchor) ->
+          (mty, env_from_summary sum subst, rebuild sum_anchor))
+          anchor.anchor_external } in
+  rebuild anchor
 
 (* Querying dynamic context *)
 
 let recpath a = a.anchor_recpath
 let anchor a = a.anchor_path
+
+let rec find_type_in_sig name items =
+  match items with
+  | [] -> raise Not_found
+  | Sig_type (id, decl, _) :: _ when Ident.name id = name -> id
+  | _ :: items -> find_type_in_sig name items
+
+let external_type name ext =
+  match ext with
+  | None -> None
+  | Some (mty, env, anchor) ->
+      match scrape_modtype mty env with
+      | Mty_ident _ | Mty_functor _ -> None
+      | Mty_signature sg ->
+          try
+            let id = find_type_in_sig name sg in
+            let new_env = !add_signature' ~anchor sg env in
+            Some (id, new_env)
+          with Not_found -> None
+
+let anchor_type anchor id =
+  let name = Ident.name id in
+  Anchored (Pdot(anchor.anchor_path, name, nopos),
+            external_type name anchor.anchor_external)
+
+let type_dynid anchor dynamic pos id =
+  match anchor with
+  | None ->
+      assert (not dynamic);
+      Non_anchored
+  | Some anchor ->
+      if dynamic then
+        (* GRGR TODO transparent type *)
+        Non_anchored
+      else
+        anchor_type anchor id
 
 (* Compute structure descriptions *)
 
@@ -1105,10 +1211,11 @@ and components_of_module_maker (env, sub, path, mty, anchor, dynamic) =
             let decl' = Subst.type_declaration sub decl in
             let constructors = List.map snd (constructors_of_type path decl') in
             let labels = List.map snd (labels_of_type path decl') in
+            let dynid = type_dynid anchor dynamic pos id in
             c.comp_types <-
               Tbl.add (Ident.name id)
-                ((decl', (constructors, labels)), nopos)
-                  c.comp_types;
+                ((decl', (constructors, labels), dynid), nopos)
+                c.comp_types;
             List.iter
               (fun descr ->
                 c.comp_constrs <-
@@ -1202,7 +1309,7 @@ and store_value ?check id path decl env =
     values = EnvTbl.add id (path, decl) env.values;
     summary = Env_value(env.summary, id, decl) }
 
-and store_type id path info env =
+and store_type ?(dynid = Non_anchored) id path info env =
   let loc = info.type_loc in
   check_usage loc id (fun s -> Warnings.Unused_type_declaration s)
     type_declarations;
@@ -1241,8 +1348,8 @@ and store_type id path info env =
         (fun (id, descr) labels -> EnvTbl.add id descr labels)
         labels
         env.labels;
-    types = EnvTbl.add id (path, (info, descrs)) env.types;
-    summary = Env_type(env.summary, id, info) }
+    types = EnvTbl.add id (path, (info, descrs, dynid)) env.types;
+    summary = Env_type(env.summary, id, info, dynid) }
 
 and store_type_infos id path info env =
   (* Simplified version of store_type that doesn't compute and store
@@ -1251,8 +1358,8 @@ and store_type_infos id path info env =
      keep track of type abbreviations (e.g. type t = float) in the
      computation of label representations. *)
   { env with
-    types = EnvTbl.add id (path, (info,([],[]))) env.types;
-    summary = Env_type(env.summary, id, info) }
+    types = EnvTbl.add id (path, (info,([],[]), Non_anchored)) env.types;
+    summary = Env_type(env.summary, id, info, Non_anchored) }
 
 and store_exception id path decl env =
   let loc = decl.exn_loc in
@@ -1289,7 +1396,8 @@ and store_module ?anchor ?(dynamic = false) id path mty env =
                  (path, components_of_module env Subst.identity
                                              path mty anchor dynamic)
                  env.components;
-    summary = Env_module(env.summary, id, mty, anchor, dynamic) }
+    summary = Env_module(env.summary, id, mty,
+                         may_map anchor_summary anchor, dynamic) }
 
 and store_modtype id path info env =
   { env with
@@ -1333,8 +1441,8 @@ let _ =
 let add_value ?check id desc env =
   store_value ?check id (Pident id) desc env
 
-let add_type id info env =
-  store_type id (Pident id) info env
+let add_type ?dynid id info env =
+  store_type ?dynid id (Pident id) info env
 
 and add_exception id decl env =
   store_exception id (Pident id) decl env
@@ -1366,7 +1474,7 @@ let enter store_fun name data env =
   let id = Ident.create name in (id, store_fun id (Pident id) data env)
 
 let enter_value ?check = enter (store_value ?check)
-and enter_type = enter store_type
+and enter_type ?dynid = enter (store_type ?dynid)
 and enter_exception = enter store_exception
 and enter_module ?anchor ?dynamic = enter (store_module ?anchor ?dynamic)
 and enter_modtype = enter store_modtype
@@ -1403,7 +1511,9 @@ let add_signature ?anchor sg env =
         let newenv =
           match item with
           | Sig_value(id, decl) -> add_value id decl env
-          | Sig_type(id, decl, _) -> add_type id decl env
+          | Sig_type(id, decl, _) ->
+              let dynid = type_dynid anchor false pos id in
+              add_type ~dynid id decl env
           | Sig_exception(id, decl) -> add_exception id decl env
           | Sig_module(id, mty, _, _) -> add_module ?anchor id mty env
           | Sig_modtype(id, decl) -> add_modtype id decl env
@@ -1435,7 +1545,8 @@ let open_signature root sg env =
             Sig_value(id, decl) ->
               store_value (Ident.hide id) p decl env
           | Sig_type(id, decl, _) ->
-              store_type (Ident.hide id) p decl env
+              let dynid = type_dynid anchor dynamic pos id in
+              store_type ~dynid (Ident.hide id) p decl env
           | Sig_exception(id, decl) ->
               store_exception (Ident.hide id) p decl env
           | Sig_module(id, mty, _, dynamic') ->

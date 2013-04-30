@@ -686,7 +686,7 @@ let rec compute_variance_fixpoint env decls required variances =
       (fun (id, decl) req -> if not (is_sharp id) then
         ignore (compute_variance_decl new_env true decl req))
       new_decls required;
-    new_decls, new_env
+    new_decls
   end
 
 let init_variance (id, decl) =
@@ -701,7 +701,7 @@ let compute_variance_decls env cldecls =
       cldecls ([],[])
   in
   let variances = List.map init_variance decls in
-  let (decls, _) = compute_variance_fixpoint env decls required variances in
+  let decls = compute_variance_fixpoint env decls required variances in
   List.map2
     (fun (_,decl) (_, _, cl_abbr, clty, cltydef, _) ->
       let variance = List.map (fun (c,n,t) -> (c,n)) decl.type_variance in
@@ -755,7 +755,7 @@ let name_recursion sdecl id decl =
   | _ -> decl
 
 (* Translate a set of mutually recursive type declarations *)
-let transl_type_decl env name_sdecl_list =
+let transl_type_decl ?anchor env name_sdecl_list =
   (* Add dummy types for fixed rows *)
   let fixed_types =
     List.filter (fun (_, sd) -> is_fixed_type sd) name_sdecl_list
@@ -859,14 +859,25 @@ let transl_type_decl env name_sdecl_list =
     List.map (fun (_, sdecl) -> sdecl.ptype_variance, sdecl.ptype_loc)
       name_sdecl_list
   in
-  let final_decls, final_env =
+  let final_decls =
     compute_variance_fixpoint env decls required (List.map init_variance decls)
   in
-  let final_decls = List.map2 (fun (id, name_loc, tdecl) (id2, decl) ->
-        (id, name_loc, { tdecl with typ_type = decl })
-    ) tdecls final_decls in
+  let final_tdecls =
+    List.map2 (fun (id, name_loc, tdecl) (id2, decl) ->
+      (id, name_loc, { tdecl with typ_type = decl }))
+      tdecls final_decls in
+  (* Compute dynamic identifiers *)
+  let final_env =
+    List.fold_right
+      (fun (id, decl) env ->
+        let dynid =
+          match anchor with
+          | None -> Env.Non_anchored
+          | Some anchor -> Env.anchor_type anchor id in
+        Env.add_type ~dynid id decl env)
+      final_decls env in
   (* Done *)
-  (final_decls, final_env)
+  (final_tdecls, final_env)
 
 (* Translate an exception declaration *)
 let transl_closed_type env sty =

@@ -19,7 +19,8 @@ open Typedtree
 let print_DEBUG3 s = print_string s ; print_newline ();;
 let print_DEBUG s = print_string s ; print_newline ();;
 
-type typedtree = (Typedtree.structure * Typedtree.module_coercion)
+type typedtree =
+    (Ident.t option * Typedtree.structure * Typedtree.module_coercion)
 
 module Name = Odoc_name
 open Odoc_parameter
@@ -1738,7 +1739,7 @@ module Analyser =
 
      let analyse_typed_tree source_file input_file
          (parsetree : Parsetree.structure) (typedtree : typedtree) =
-       let (tree_structure, _) = typedtree in
+       let (_, tree_structure, _) = typedtree in
        let complete_source_file =
          try
            let curdir = Sys.getcwd () in

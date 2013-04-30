@@ -42,11 +42,12 @@ let rec env_from_summary sum subst =
           Env.empty
       | Env_value(s, id, desc) ->
           Env.add_value id (Subst.value_description subst desc) (env_from_summary s subst)
-      | Env_type(s, id, desc) ->
-          Env.add_type id (Subst.type_declaration subst desc) (env_from_summary s subst)
+      | Env_type(s, id, desc, dynid) ->
+          Env.add_type ~dynid id (Subst.type_declaration subst desc) (env_from_summary s subst)
       | Env_exception(s, id, desc) ->
           Env.add_exception id (Subst.exception_declaration subst desc) (env_from_summary s subst)
       | Env_module(s, id, desc, anchor, dynamic) ->
+          let anchor = may_map (Env.anchor_from_summary env_from_summary subst) anchor in
           Env.add_module ?anchor ~dynamic id (Subst.modtype subst desc) (env_from_summary s subst)
       | Env_modtype(s, id, desc) ->
           Env.add_modtype id (Subst.modtype_declaration subst desc) (env_from_summary s subst)

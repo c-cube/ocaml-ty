@@ -12,7 +12,8 @@
 
 (** The module for analysing the typed abstract syntax tree and source code and creating modules, classes, ..., elements.*)
 
-type typedtree = Typedtree.structure * Typedtree.module_coercion
+type typedtree =
+    (Ident.t option * Typedtree.structure * Typedtree.module_coercion)
 
 (** This module is used to search for structure items by name in a [Typedtree.structure]. *)
 module Typedtree_search :

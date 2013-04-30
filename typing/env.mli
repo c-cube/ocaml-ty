@@ -19,11 +19,17 @@ val empty: t
 val initial: t
 val diff: t -> t -> Ident.t list
 
+type dynid =
+  | Anchored of Path.t * (Ident.t * t) option
+  | Dynamic of Path.t
+  | Newtype of Ident.t
+  | Non_anchored
+
 type type_descriptions =
     constructor_description list * label_description list
 
 val iter_types:
-    (Path.t -> Path.t * (type_declaration * type_descriptions) -> unit) ->
+    (Path.t -> Path.t * (type_declaration * type_descriptions * dynid) -> unit) ->
     t -> unit
 
 (* Anchors *)
@@ -33,23 +39,28 @@ type anchor
 val recpath: anchor -> Path.t option
 val anchor: anchor -> Path.t
 
-val named_anchor: Ident.t -> anchor
+val named_anchor: ?intf:(Ident.t * signature * t) -> Ident.t -> anchor
 val anonymous_anchor: unit -> Ident.t * anchor
 
 val anchor_structure: anchor option -> Ident.t option * anchor
 val anchor_functor: Path.t -> anchor -> anchor
-val anchor_constraint: anchor option -> Ident.t * anchor * Path.t option
+val anchor_constraint:
+    t -> module_type -> anchor option -> Ident.t * anchor * Path.t option
 
 val anchor_submodule: Ident.t -> anchor -> anchor
-val anchor_recsubmodule: Ident.t -> anchor -> Ident.t * anchor * Path.t
+val anchor_recsubmodule:
+    t -> Ident.t -> module_type -> anchor -> Ident.t * anchor * Path.t
 
 val anchor_toplevel_phrase: anchor -> anchor
+
+val anchor_type: anchor -> Ident.t -> dynid
 
 (* Lookup by paths *)
 
 val find_value: Path.t -> t -> value_description
 val find_type: Path.t -> t -> type_declaration
 val find_type_descrs: Path.t -> t -> type_descriptions
+val find_type_dynid: Path.t -> t -> dynid
 val find_module: Path.t -> t -> module_type
 val find_module_dynid: Path.t -> t -> Path.t
 val find_modtype: Path.t -> t -> modtype_declaration
@@ -89,7 +100,7 @@ val lookup_cltype: Longident.t -> t -> Path.t * class_type_declaration
 
 val add_value:
     ?check:(string -> Warnings.t) -> Ident.t -> value_description -> t -> t
-val add_type: Ident.t -> type_declaration -> t -> t
+val add_type: ?dynid:dynid -> Ident.t -> type_declaration -> t -> t
 val add_exception: Ident.t -> exception_declaration -> t -> t
 val add_module:
     ?anchor:anchor -> ?dynamic:bool -> Ident.t -> module_type -> t -> t
@@ -114,7 +125,7 @@ val open_pers_signature: string -> t -> t
 val enter_value:
     ?check:(string -> Warnings.t) ->
     string -> value_description -> t -> Ident.t * t
-val enter_type: string -> type_declaration -> t -> Ident.t * t
+val enter_type: ?dynid:dynid -> string -> type_declaration -> t -> Ident.t * t
 val enter_exception: string -> exception_declaration -> t -> Ident.t * t
 val enter_module:
     ?anchor:anchor -> ?dynamic:bool ->
@@ -161,15 +172,18 @@ val crc_units: Consistbl.t
 type summary =
     Env_empty
   | Env_value of summary * Ident.t * value_description
-  | Env_type of summary * Ident.t * type_declaration
+  | Env_type of summary * Ident.t * type_declaration * dynid
   | Env_exception of summary * Ident.t * exception_declaration
-  | Env_module of summary * Ident.t * module_type * anchor option * bool
+  | Env_module of summary * Ident.t * module_type * anchor_summary option * bool
   | Env_modtype of summary * Ident.t * modtype_declaration
   | Env_class of summary * Ident.t * class_declaration
   | Env_cltype of summary * Ident.t * class_type_declaration
   | Env_open of summary * Path.t
+and anchor_summary
 
 val summary: t -> summary
+val anchor_from_summary:
+    (summary -> Subst.t -> t) -> Subst.t -> anchor_summary -> anchor
 
 (* Return an equivalent environment where all fields have been reset,
    except the summary. The initial environment can be rebuilt from the
@@ -222,7 +236,7 @@ val fold_values:
   (string -> Path.t -> value_description -> 'a -> 'a) ->
   Longident.t option -> t -> 'a -> 'a
 val fold_types:
-  (string -> Path.t -> type_declaration * type_descriptions -> 'a -> 'a) ->
+  (string -> Path.t -> type_declaration * type_descriptions * dynid -> 'a -> 'a) ->
   Longident.t option -> t -> 'a -> 'a
 val fold_constructors:
   (constructor_description -> 'a -> 'a) ->

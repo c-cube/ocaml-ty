@@ -16,7 +16,8 @@
 open Typedtree
 open Lambda
 
-val transl_implementation: string -> structure * module_coercion -> lambda
+val transl_implementation:
+      string -> Ident.t option * structure * module_coercion -> lambda
 val transl_store_phrases: string -> structure -> int * lambda
 val transl_store_implementation:
       string -> structure * module_coercion -> int * lambda * lambda
