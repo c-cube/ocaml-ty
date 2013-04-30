@@ -469,7 +469,7 @@ let create_index_lists elements string_of_ele =
 
 (*** for labels *)
 
-let is_optional = Btype.is_optional
+let is_optional l = Btype.is_optional l && not (Btype.is_implicit_ty l)
 let label_name = Btype.label_name
 
 let remove_option typ =

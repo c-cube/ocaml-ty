@@ -919,7 +919,7 @@ and transl_apply lam sargs loc =
               Lvar id
         in
         let args, args' =
-          if List.for_all (fun (_,opt) -> opt = Optional) args then [], args
+          if List.for_all (fun (_,opt) -> opt = Optional || opt = ImplicitTy) args then [], args
           else args, [] in
         let lam =
           if args = [] then lam else lapply lam (List.rev_map fst args) in

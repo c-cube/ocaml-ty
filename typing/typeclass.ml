@@ -900,7 +900,7 @@ and class_expr cl_num val_env met_env scl =
       Ctype.raise_nongen_level ();
       let cl = class_expr cl_num val_env' met_env scl' in
       Ctype.end_def ();
-      if Btype.is_optional l && not_function cl.cl_type then
+      if (Btype.is_optional l || Btype.is_implicit_ty l) && not_function cl.cl_type then
         Location.prerr_warning pat.pat_loc
           Warnings.Unerasable_optional_argument;
       rc {cl_desc = Tcl_fun (l, pat, pv, cl, partial);
@@ -913,7 +913,8 @@ and class_expr cl_num val_env met_env scl =
       let rec nonopt_labels ls ty_fun =
         match ty_fun with
         | Cty_fun (l, _, ty_res) ->
-            if Btype.is_optional l then nonopt_labels ls ty_res
+            if Btype.is_optional l || Btype.is_implicit_ty l
+            then nonopt_labels ls ty_res
             else nonopt_labels (l::ls) ty_res
         | _    -> ls
       in
@@ -933,9 +934,11 @@ and class_expr cl_num val_env met_env scl =
         | Cty_fun (l, ty, ty_fun) when sargs <> [] || more_sargs <> [] ->
             let name = Btype.label_name l
             and optional =
-              if Btype.is_optional l then Optional else Required in
+              if Btype.is_implicit_ty l then ImplicitTy else
+              if Btype.is_optional l then Optional
+              else Required in
             let sargs, more_sargs, arg =
-              if ignore_labels && not (Btype.is_optional l) then begin
+              if ignore_labels && not (Btype.is_optional l || Btype.is_implicit_ty l) then begin
                 match sargs, more_sargs with
                   (l', sarg0)::_, _ ->
                     raise(Error(sarg0.pexp_loc, val_env, Apply_wrong_label l'))
@@ -958,11 +961,11 @@ and class_expr cl_num val_env met_env scl =
                       Btype.extract_label name more_sargs
                     in (l', sarg0, sargs @ sargs1, sargs2)
                 in
-                if optional = Required && Btype.is_optional l' then
+                if optional = Required && (Btype.is_optional l' || Btype.is_implicit_ty l') then
                   Location.prerr_warning sarg0.pexp_loc
                     (Warnings.Nonoptional_label l);
                 sargs, more_sargs,
-                if optional = Required || Btype.is_optional l' then
+                if optional = Required || Btype.is_optional l' || Btype.is_implicit_ty l' then
                   Some (type_argument val_env sarg0 ty ty)
                 else
                   let ty0 = extract_option_type val_env ty in
@@ -970,7 +973,7 @@ and class_expr cl_num val_env met_env scl =
                   Some (option_some arg)
               with Not_found ->
                 sargs, more_sargs,
-                if Btype.is_optional l &&
+                if (Btype.is_optional l || Btype.is_implicit_ty l) &&
                   (List.mem_assoc "" sargs || List.mem_assoc "" more_sargs)
                 then
                   Some (option_none ty Location.none)
@@ -1076,12 +1079,16 @@ and class_expr cl_num val_env met_env scl =
 (* of optional parameters                                         *)
 
 let var_option = Predef.type_option (Btype.newgenvar ())
+let var_ty = Predef.type_ty (Btype.newgenvar ())
 
 let rec approx_declaration cl =
   match cl.pcl_desc with
     Pcl_fun (l, _, _, cl) ->
       let arg =
-        if Btype.is_optional l then Ctype.instance_def var_option
+        if Btype.is_optional l
+        then Ctype.instance_def var_option
+        else if Btype.is_implicit_ty l
+        then Ctype.instance_def var_ty
         else Ctype.newvar () in
       Ctype.newty (Tarrow (l, arg, approx_declaration cl, Cok))
   | Pcl_let (_, _, cl) ->
@@ -1094,7 +1101,10 @@ let rec approx_description ct =
   match ct.pcty_desc with
     Pcty_fun (l, _, ct) ->
       let arg =
-        if Btype.is_optional l then Ctype.instance_def var_option
+        if Btype.is_optional l
+        then Ctype.instance_def var_option
+        else if Btype.is_implicit_ty l
+        then Ctype.instance_def var_ty
         else Ctype.newvar () in
       Ctype.newty (Tarrow (l, arg, approx_description ct, Cok))
   | _ -> Ctype.newvar ()

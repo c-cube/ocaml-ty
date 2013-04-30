@@ -212,7 +212,7 @@ module E:
     val lazy_: ?loc:Location.t -> expression -> expression
     val poly: ?loc:Location.t -> expression -> core_type option -> expression
     val object_: ?loc:Location.t -> class_structure -> expression
-    val newtype: ?loc:Location.t -> string -> expression -> expression
+    val newtype: ?loc:Location.t -> string -> expression -> bool -> expression
     val pack: ?loc:Location.t -> module_expr -> expression
     val open_: ?loc:Location.t -> Longident.t loc -> expression -> expression
     val lid: ?loc:Location.t -> string -> expression

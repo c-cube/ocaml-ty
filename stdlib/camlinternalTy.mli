@@ -1,4 +1,6 @@
 
+val implicit_ty_label: string
+
 type path = private
   | Pident of int * anchor_kind
   | Pdot of path * string

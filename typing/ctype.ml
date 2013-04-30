@@ -1083,6 +1083,7 @@ let instance_constructor ?in_pattern cstr =
             {desc = Tvar (Some name)} -> name
           | _ -> "ex"
         in
+        (* GRGR FIXME Newtype : automatic newtype for existentials *)
         let (id, new_env) =
           Env.enter_type (get_new_abstract_name name) decl !env in
         env := new_env;
@@ -1847,6 +1848,7 @@ let reify env t =
   let create_fresh_constr lev name =
     let decl = new_declaration (Some (newtype_level, newtype_level)) None in
     let name = get_new_abstract_name name in
+    (* FIXME GRGR Newtype automatic decomposition ??? *)
     let (id, new_env) = Env.enter_type name decl !env in
     let t = newty2 lev (Tconstr (Path.Pident id,[],ref Mnil))  in
     env := new_env;
@@ -2237,7 +2239,7 @@ and unify3 env t1 t1' t2 t2' =
     try
       begin match (d1, d2) with
         (Tarrow (l1, t1, u1, c1), Tarrow (l2, t2, u2, c2)) when l1 = l2 ||
-        !Clflags.classic && not (is_optional l1 || is_optional l2) ->
+        !Clflags.classic && not (is_optional l1 || is_optional l2 || is_implicit_ty l1 || is_implicit_ty l2) ->
           unify  env t1 t2; unify env  u1 u2;
           begin match commu_repr c1, commu_repr c2 with
             Clink r, c2 -> set_commu r c2
@@ -2602,7 +2604,7 @@ let filter_arrow env t l =
       link_type t t';
       (t1, t2)
   | Tarrow(l', t1, t2, _)
-    when l = l' || !Clflags.classic && l = "" && not (is_optional l') ->
+    when l = l' || !Clflags.classic && l = "" && not (is_optional l' || is_implicit_ty l') ->
       (t1, t2)
   | _ ->
       raise (Unify [])
@@ -2725,7 +2727,7 @@ let rec moregen inst_nongen type_pairs env t1 t2 =
               moregen_occur env t1'.level t2;
               link_type t1' t2
           | (Tarrow (l1, t1, u1, _), Tarrow (l2, t2, u2, _)) when l1 = l2
-            || !Clflags.classic && not (is_optional l1 || is_optional l2) ->
+            || !Clflags.classic && not (is_optional l1 || is_optional l2 || is_implicit_ty l1 || is_implicit_ty l2) ->
               moregen inst_nongen type_pairs env t1 t2;
               moregen inst_nongen type_pairs env u1 u2
           | (Ttuple tl1, Ttuple tl2) ->
@@ -2998,7 +3000,7 @@ let rec eqtype rename type_pairs subst env t1 t2 =
                 subst := (t1', t2') :: !subst
               end
           | (Tarrow (l1, t1, u1, _), Tarrow (l2, t2, u2, _)) when l1 = l2
-            || !Clflags.classic && not (is_optional l1 || is_optional l2) ->
+            || !Clflags.classic && not (is_optional l1 || is_optional l2 || is_implicit_ty l1 || is_implicit_ty l2) ->
               eqtype rename type_pairs subst env t1 t2;
               eqtype rename type_pairs subst env u1 u2;
           | (Ttuple tl1, Ttuple tl2) ->
@@ -3694,7 +3696,7 @@ let rec subtype_rec env trace t1 t2 cstrs =
       (Tvar _, _) | (_, Tvar _) ->
         (trace, t1, t2, !univar_pairs)::cstrs
     | (Tarrow(l1, t1, u1, _), Tarrow(l2, t2, u2, _)) when l1 = l2
-      || !Clflags.classic && not (is_optional l1 || is_optional l2) ->
+      || !Clflags.classic && not (is_optional l1 || is_optional l2 || is_implicit_ty l1 || is_implicit_ty l2) ->
         let cstrs = subtype_rec env ((t2, t1)::trace) t2 t1 cstrs in
         subtype_rec env ((u1, u2)::trace) u1 u2 cstrs
     | (Ttuple tl1, Ttuple tl2) ->

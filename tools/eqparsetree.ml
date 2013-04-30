@@ -748,8 +748,8 @@ and eq_expression_desc :
   | (Pexp_poly (a0, a1), Pexp_poly (b0, b1)) ->
       (eq_expression (a0, b0)) && (eq_option eq_core_type (a1, b1))
   | (Pexp_object a0, Pexp_object b0) -> eq_class_structure (a0, b0)
-  | (Pexp_newtype (a0, a1), Pexp_newtype (b0, b1)) ->
-      (eq_string (a0, b0)) && (eq_expression (a1, b1))
+  | (Pexp_newtype (a0, a1, a2), Pexp_newtype (b0, b1, b2)) ->
+      (eq_string (a0, b0)) && (eq_expression (a1, b1)) && a2 = b2
   | (Pexp_pack a0, Pexp_pack b0) -> eq_module_expr (a0, b0)
   | (Pexp_open (a0, a1), Pexp_open (b0, b1)) ->
       (Asttypes.eq_loc Longident.eq_t (a0, b0)) &&

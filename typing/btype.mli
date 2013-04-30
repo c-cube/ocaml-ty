@@ -137,6 +137,7 @@ val forget_abbrev:
 (**** Utilities for labels ****)
 
 val is_optional : label -> bool
+val is_implicit_ty : label -> bool
 val label_name : label -> label
 val extract_label :
     label -> (label * 'a) list ->

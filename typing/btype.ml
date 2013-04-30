@@ -443,6 +443,7 @@ let check_memorized_abbrevs () =
 
 let is_optional l =
   String.length l > 0 && l.[0] = '?'
+let is_implicit_ty l = l = CamlinternalTy.implicit_ty_label
 
 let label_name l =
   if is_optional l then String.sub l 1 (String.length l - 1)

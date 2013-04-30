@@ -244,7 +244,11 @@ let rec transl_type env policy styp =
   | Ptyp_arrow(l, st1, st2) ->
     let cty1 = transl_type env policy st1 in
     let cty2 = transl_type env policy st2 in
-    let ty = newty (Tarrow(l, cty1.ctyp_type, cty2.ctyp_type, Cok)) in
+    let ty =
+      if l = CamlinternalTy.implicit_ty_label then
+        newty (Tarrow(l, Predef.type_ty cty1.ctyp_type, cty2.ctyp_type, Cok))
+      else
+        newty (Tarrow(l, cty1.ctyp_type, cty2.ctyp_type, Cok)) in
     ctyp (Ttyp_arrow (l, cty1, cty2)) ty env loc
   | Ptyp_tuple stl ->
     let ctys = List.map (transl_type env policy) stl in

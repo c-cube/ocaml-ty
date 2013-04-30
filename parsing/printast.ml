@@ -328,8 +328,9 @@ and expression i ppf x =
   | Pexp_object s ->
       line i ppf "Pexp_object\n";
       class_structure i ppf s
-  | Pexp_newtype (s, e) ->
-      line i ppf "Pexp_newtype \"%s\"\n" s;
+  | Pexp_newtype (s, e, concrete) ->
+      line i ppf "Pexp_newtype \"%s%s\"\n"
+        (if concrete then "?" else "") s;
       expression i ppf e
   | Pexp_pack me ->
       line i ppf "Pexp_pack\n";

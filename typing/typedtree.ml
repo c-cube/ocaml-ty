@@ -19,7 +19,7 @@ open Types
 (* Value expressions for the core language *)
 
 type partial = Partial | Total
-type optional = Required | Optional
+type optional = Required | Optional | ImplicitTy
 
 type pattern =
   { pat_desc: pattern_desc;
@@ -60,7 +60,7 @@ and exp_extra =
   | Texp_constraint of core_type option * core_type option
   | Texp_open of Path.t * Longident.t loc * Env.t
   | Texp_poly of core_type option
-  | Texp_newtype of string
+  | Texp_newtype of string * bool
 
 and expression_desc =
     Texp_ident of Path.t * Longident.t loc * Types.value_description

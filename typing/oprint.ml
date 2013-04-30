@@ -171,8 +171,13 @@ and print_out_type_1 ppf =
   function
     Otyp_arrow (lab, ty1, ty2) ->
       pp_open_box ppf 0;
-      if lab <> "" then (pp_print_string ppf lab; pp_print_char ppf ':');
+      if lab <> "" then
+        if Btype.is_implicit_ty lab then
+          (pp_print_string ppf "?(")
+        else
+          (pp_print_string ppf lab; pp_print_char ppf ':');
       print_out_type_2 ppf ty1;
+      if Btype.is_implicit_ty lab then (pp_print_string ppf ")");
       pp_print_string ppf " ->";
       pp_print_space ppf ();
       print_out_type_1 ppf ty2;

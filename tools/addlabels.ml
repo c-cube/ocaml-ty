@@ -270,7 +270,7 @@ let rec add_labels_expr ~text ~values ~classes expr =
   | Pexp_assert e
   | Pexp_lazy e
   | Pexp_poly (e, _)
-  | Pexp_newtype (_, e)
+  | Pexp_newtype (_, e, _)
   | Pexp_open (_, e) ->
       add_labels_rec e
   | Pexp_record (lst, opt) ->

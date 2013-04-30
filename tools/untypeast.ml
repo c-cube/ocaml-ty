@@ -184,10 +184,18 @@ and untype_extra (extra, loc) sexp =
                          option untype_core_type cty2)
     | Texp_open (_path, lid, _) -> Pexp_open (lid, sexp)
     | Texp_poly cto -> Pexp_poly (sexp, option untype_core_type cto)
-    | Texp_newtype s -> Pexp_newtype (s, sexp)
+    | Texp_newtype (s, false) -> Pexp_newtype (s, sexp, false)
+    | Texp_newtype (s, true) -> Pexp_newtype (s, remove_type_arg sexp, true)
   in
   { pexp_desc = desc;
     pexp_loc = loc }
+
+and remove_type_arg sexp =
+  match sexp.pexp_desc with
+  | Pexp_function (l, None, [(_, body)]) ->
+      assert (l = CamlinternalTy.implicit_ty_label);
+      body
+  | _ -> assert false
 
 and untype_expression exp =
   let desc =
@@ -206,6 +214,7 @@ and untype_expression exp =
     | Texp_apply (exp, list) ->
         Pexp_apply (untype_expression exp,
           List.fold_right (fun (label, expo, _) list ->
+              if Btype.is_implicit_ty label then list else
               match expo with
                 None -> list
               | Some exp -> (label, untype_expression exp) :: list
@@ -287,6 +296,7 @@ and untype_expression exp =
     | Texp_pack (mexpr) ->
         Pexp_pack (untype_module_expr mexpr)
     | Texp_implicit ->
+        (* Inserted only as implicit argument. Should have been removed. *)
         assert false
   in
   List.fold_right untype_extra exp.exp_extra
@@ -485,7 +495,7 @@ and untype_core_type ct =
     | Ttyp_var s -> Ptyp_var s
     | Ttyp_arrow (label, ct1, ct2) ->
         Ptyp_arrow (label, untype_core_type ct1, untype_core_type ct2)
-  | Ttyp_tuple list -> Ptyp_tuple (List.map untype_core_type list)
+    | Ttyp_tuple list -> Ptyp_tuple (List.map untype_core_type list)
     | Ttyp_constr (_path, lid, list) ->
         Ptyp_constr (lid,
           List.map untype_core_type list)

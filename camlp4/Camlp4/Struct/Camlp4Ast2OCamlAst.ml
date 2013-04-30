@@ -909,9 +909,9 @@ value varify_constructors var_names =
       let e = mkexp (Pexp_constraint (expr e) (Some (ctyp ty)) None) in
       let rec mk_newtypes x =
         match x with
-          [ [newtype :: []] -> mkexp (Pexp_newtype(newtype, e))
+          [ [newtype :: []] -> mkexp (Pexp_newtype(newtype, e, false))
           | [newtype :: newtypes] ->
-            mkexp(Pexp_newtype (newtype,mk_newtypes newtypes))
+            mkexp(Pexp_newtype (newtype,mk_newtypes newtypes, false))
           | [] -> assert False]
       in
       let pat =

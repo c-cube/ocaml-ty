@@ -293,10 +293,25 @@ let varify_constructors var_names t =
 let wrap_type_annotation newtypes core_type body =
   let exp = mkexp(Pexp_constraint(body,Some core_type,None)) in
   let exp =
-    List.fold_right (fun newtype exp -> mkexp (Pexp_newtype (newtype, exp)))
+    List.fold_right
+      (fun (newtype, concrete, loc) exp ->
+        mkexp (Pexp_newtype (newtype, exp, concrete)))
       newtypes exp
   in
-  (exp, ghtyp(Ptyp_poly(newtypes,varify_constructors newtypes core_type)))
+  let core_type' =
+    List.fold_right
+      (fun (newtype, concrete, loc) core_type ->
+        if concrete then
+          let arg_type =
+            { ptyp_desc = Ptyp_constr (mkloc (Lident newtype) loc, []);
+              ptyp_loc = loc } in
+          ghtyp(Ptyp_arrow(CamlinternalTy.implicit_ty_label, arg_type, core_type))
+        else
+          core_type)
+      newtypes core_type
+  in
+  let newtypes = List.map Misc.fst3 newtypes in
+  (exp, ghtyp(Ptyp_poly(newtypes, varify_constructors newtypes core_type')))
 
 %}
 
@@ -977,7 +992,9 @@ expr:
   | FUN labeled_simple_pattern fun_def
       { let (l,o,p) = $2 in mkexp(Pexp_function(l, o, [p, $3])) }
   | FUN LPAREN TYPE LIDENT RPAREN fun_def
-      { mkexp(Pexp_newtype($4, $6)) }
+      { mkexp(Pexp_newtype($4, $6, false)) }
+  | FUN QUESTION LPAREN TYPE LIDENT RPAREN fun_def
+      { mkexp(Pexp_newtype($5, $7, true)) }
   | MATCH seq_expr WITH opt_bar match_cases
       { mkexp(Pexp_match($2, List.rev $5)) }
   | TRY seq_expr WITH opt_bar match_cases
@@ -1172,8 +1189,10 @@ let_bindings:
 ;
 
 lident_list:
-    LIDENT                            { [$1] }
-  | LIDENT lident_list                { $1 :: $2 }
+    LIDENT                            { [$1, false, rhs_loc 1] }
+  | LIDENT lident_list                { ($1, false, rhs_loc 1) :: $2 }
+  | QUESTION LIDENT                            { [$2, true, rhs_loc 2] }
+  | QUESTION LIDENT lident_list                { ($2, true, rhs_loc 2) :: $3 }
 ;
 let_binding:
     val_ident fun_binding
@@ -1200,7 +1219,9 @@ strict_binding:
   | labeled_simple_pattern fun_binding
       { let (l, o, p) = $1 in ghexp(Pexp_function(l, o, [p, $2])) }
   | LPAREN TYPE LIDENT RPAREN fun_binding
-      { mkexp(Pexp_newtype($3, $5)) }
+      { mkexp(Pexp_newtype($3, $5, false)) }
+  | QUESTION LPAREN TYPE LIDENT RPAREN fun_binding
+      { mkexp(Pexp_newtype($4, $6, true)) }
 ;
 match_cases:
     pattern match_action                        { [$1, $2] }
@@ -1211,7 +1232,9 @@ fun_def:
   | labeled_simple_pattern fun_def
       { let (l,o,p) = $1 in ghexp(Pexp_function(l, o, [p, $2])) }
   | LPAREN TYPE LIDENT RPAREN fun_def
-      { mkexp(Pexp_newtype($3, $5)) }
+      { mkexp(Pexp_newtype($3, $5, false)) }
+  | QUESTION LPAREN TYPE LIDENT RPAREN fun_def
+      { mkexp(Pexp_newtype($4, $6, true)) }
 ;
 match_action:
     MINUSGREATER seq_expr                       { $2 }
@@ -1542,6 +1565,9 @@ core_type2:
       { mktyp(Ptyp_arrow("?" ^ $1 , mkoption $2, $4)) }
   | LIDENT COLON core_type2 MINUSGREATER core_type2
       { mktyp(Ptyp_arrow($1, $3, $5)) }
+  | QUESTION LPAREN QUOTE ident RPAREN MINUSGREATER core_type2
+      { mktyp(Ptyp_arrow(CamlinternalTy.implicit_ty_label,
+                         mktyp(Ptyp_var $4), $7)) }
   | core_type2 MINUSGREATER core_type2
       { mktyp(Ptyp_arrow("", $1, $3)) }
 ;

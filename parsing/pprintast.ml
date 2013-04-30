@@ -646,8 +646,9 @@ class printer  ()= object(self:'self)
     | Pexp_constant c -> self#constant f c;
     | Pexp_pack me ->
         pp f "(module@;%a)"  self#module_expr me
-    | Pexp_newtype (lid, e) ->
-        pp f "fun@;(type@;%s)@;->@;%a"  lid  self#expression  e
+    | Pexp_newtype (lid, e, concrete) ->
+        pp f "fun@;%s(type@;%s)@;->@;%a"
+          (if concrete then "?" else "") lid  self#expression  e
     | Pexp_tuple l ->
         pp f "@[<hov2>(%a)@]"  (self#list self#simple_expr  ~sep:",@;")  l
     | Pexp_constraint (e, cto1, cto2) ->
@@ -944,8 +945,9 @@ class printer  ()= object(self:'self)
                 pp f "%a@ %a" self#simple_pattern p pp_print_pexp_function e
           else
             pp f "%a@ %a" self#label_exp (label,eo,p) pp_print_pexp_function e
-      | Pexp_newtype (str,e) ->
-          pp f "(type@ %s)@ %a" str pp_print_pexp_function e
+      | Pexp_newtype (str,e,concrete) ->
+          pp f "%s(type@ %s)@ %a"
+            (if concrete then "?" else "") str pp_print_pexp_function e
       | _ -> pp f "=@;%a" self#expression x in
     match (x.pexp_desc,p.ppat_desc) with
     | (Pexp_when (e1,e2),_) ->

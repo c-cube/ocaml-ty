@@ -1,4 +1,10 @@
 
+(** *)
+
+let implicit_ty_label = "!ty"
+
+(** *)
+
 type path =
   | Pident of int * anchor_kind
   | Pdot of path * string

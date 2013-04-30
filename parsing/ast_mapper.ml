@@ -285,7 +285,7 @@ module E = struct
   let lazy_ ?loc a = mk ?loc (Pexp_lazy a)
   let poly ?loc a b = mk ?loc (Pexp_poly (a, b))
   let object_ ?loc a = mk ?loc (Pexp_object a)
-  let newtype ?loc a b = mk ?loc (Pexp_newtype (a, b))
+  let newtype ?loc a b c = mk ?loc (Pexp_newtype (a, b, c))
   let pack ?loc a = mk ?loc (Pexp_pack a)
   let open_ ?loc a b = mk ?loc (Pexp_open (a, b))
 
@@ -326,7 +326,7 @@ module E = struct
     | Pexp_lazy e -> lazy_ ~loc (sub # expr e)
     | Pexp_poly (e, t) -> poly ~loc (sub # expr e) (map_opt (sub # typ) t)
     | Pexp_object cls -> object_ ~loc (sub # class_structure cls)
-    | Pexp_newtype (s, e) -> newtype ~loc s (sub # expr e)
+    | Pexp_newtype (s, e, c) -> newtype ~loc s (sub # expr e) c
     | Pexp_pack me -> pack ~loc (sub # module_expr me)
     | Pexp_open (lid, e) -> open_ ~loc (map_loc sub lid) (sub # expr e)
 end

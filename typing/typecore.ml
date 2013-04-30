@@ -133,7 +133,7 @@ let iter_expression f e =
     | Pexp_record (iel, eo) ->
         may expr eo; List.iter (fun (_, e) -> expr e) iel
     | Pexp_open (_, e)
-    | Pexp_newtype (_, e)
+    | Pexp_newtype (_, e, _)
     | Pexp_poly (e, _)
     | Pexp_lazy e
     | Pexp_assert e
@@ -225,6 +225,8 @@ let type_constant = function
 
 let type_option ty =
   newty (Tconstr(Predef.path_option,[ty], ref Mnil))
+let type_ty ty =
+  newty (Tconstr(Predef.path_ty,[ty], ref Mnil))
 
 let mkexp exp_desc exp_type exp_loc exp_env =
   { exp_desc; exp_type; exp_loc; exp_env; exp_extra = [] }
@@ -244,6 +246,11 @@ let option_some texp =
 let extract_option_type env ty =
   match expand_head env ty with {desc = Tconstr(path, [ty], _)}
     when Path.same path Predef.path_option -> ty
+  | _ -> assert false
+
+let extract_ty_type env ty =
+  match expand_head env ty with {desc = Tconstr(path, [ty], _)}
+    when Path.same path Predef.path_ty -> ty
   | _ -> assert false
 
 let extract_concrete_record env ty =
@@ -1204,6 +1211,7 @@ let type_class_arg_pattern cl_num val_env met_env l spat =
   end;
   List.iter (fun f -> f()) (get_ref pattern_force);
   if is_optional l then unify_pat val_env pat (type_option (newvar ()));
+  if is_implicit_ty l then unify_pat val_env pat (type_ty (newvar ()));
   let (pv, met_env) =
     List.fold_right
       (fun (id, ty, name, loc, as_var) (pv, env) ->
@@ -1571,7 +1579,13 @@ let type_format loc fmt =
 let rec approx_type env sty =
   match sty.ptyp_desc with
     Ptyp_arrow (p, _, sty) ->
-      let ty1 = if is_optional p then type_option (newvar ()) else newvar () in
+      let ty1 =
+        if is_optional p
+        then type_option (newvar ())
+        else if is_implicit_ty p
+        then type_ty (newvar ())
+        else newvar ()
+      in
       newty (Tarrow (p, ty1, approx_type env sty, Cok))
   | Ptyp_tuple args ->
       newty (Ttuple (List.map (approx_type env) args))
@@ -1591,9 +1605,13 @@ let rec type_approx env sexp =
   match sexp.pexp_desc with
     Pexp_let (_, _, e) -> type_approx env e
   | Pexp_function (p,_,(_,e)::_) when is_optional p ->
-       newty (Tarrow(p, type_option (newvar ()), type_approx env e, Cok))
+      let ty_arg = type_option (newvar ()) in
+      newty (Tarrow(p, ty_arg, type_approx env e, Cok))
+  | Pexp_function (p,_,(_,e)::_) when is_implicit_ty p ->
+      let ty_arg = type_ty (newvar ()) in
+      newty (Tarrow(p, ty_arg, type_approx env e, Cok))
   | Pexp_function (p,_,(_,e)::_) ->
-       newty (Tarrow(p, newvar (), type_approx env e, Cok))
+      newty (Tarrow(p, newvar (), type_approx env e, Cok))
   | Pexp_match (_, (_,e)::_) -> type_approx env e
   | Pexp_try (e, _) -> type_approx env e
   | Pexp_tuple l -> newty (Ttuple(List.map (type_approx env) l))
@@ -1968,6 +1986,13 @@ and type_expect_ ?in_function env sexp ty_expected =
             with Unify _ -> assert false
           end;
           type_option tv
+        else if is_implicit_ty l then
+          let tv = newvar() in
+          begin
+            try unify env ty_arg (type_ty tv)
+            with Unify _ -> assert false
+          end;
+          type_ty tv
         else ty_arg
       in
       if separate then begin
@@ -1982,7 +2007,7 @@ and type_expect_ ?in_function env sexp ty_expected =
         let ls, tvar = list_labels env ty in
         ls = [] && not tvar
       in
-      if is_optional l && not_function ty_res then
+      if (is_optional l || is_implicit_ty l) && not_function ty_res then
         Location.prerr_warning (fst (List.hd cases)).pat_loc
           Warnings.Unerasable_optional_argument;
       re {
@@ -2641,7 +2666,7 @@ and type_expect_ ?in_function env sexp ty_expected =
         | _ -> assert false
       in
       re { exp with exp_extra = (Texp_poly cty, loc) :: exp.exp_extra }
-  | Pexp_newtype(name, sbody) ->
+  | Pexp_newtype(name, sbody, concrete) ->
       let ty = newvar () in
       (* remember original level *)
       begin_def ();
@@ -2659,10 +2684,29 @@ and type_expect_ ?in_function env sexp ty_expected =
       }
       in
       Ident.set_current_time ty.level;
-      let (id, new_env) = Env.enter_type name decl env in
+      let id = Ident.create name in
+      let dynid = if concrete then Env.Newtype id else Env.Non_anchored in
+      let new_env = Env.add_type ~dynid id decl env in
       Ctype.init_def(Ident.current_time());
-
-      let body = type_exp new_env sbody in
+      let inner_body = type_exp new_env sbody in
+      let body =
+        if not concrete then
+          inner_body
+        else
+          let arg_ty = type_ty (newty (Tconstr(Path.Pident id,[],ref Mnil))) in
+          let arg_pat =
+            { pat_desc = Tpat_var (Ident.tyrepr id, mkloc (Ident.name id) loc);
+              pat_loc = loc;
+              pat_extra = [];
+              pat_type = arg_ty;
+              pat_env = new_env; } in
+          { exp_desc = Texp_function (CamlinternalTy.implicit_ty_label,
+                                      [(arg_pat, inner_body)], Total);
+            exp_loc = inner_body.exp_loc;
+            exp_extra = [];
+            exp_type = newty(Tarrow(CamlinternalTy.implicit_ty_label,
+                                    arg_ty, inner_body.exp_type, Cok));
+            exp_env = new_env; } in
       (* Replace every instance of this type constructor in the resulting
          type. *)
       let seen = Hashtbl.create 8 in
@@ -2685,7 +2729,7 @@ and type_expect_ ?in_function env sexp ty_expected =
       (* non-expansive if the body is non-expansive, so we don't introduce
          any new extra node in the typed AST. *)
       rue { body with exp_loc = loc; exp_type = ety;
-            exp_extra = (Texp_newtype name, loc) :: body.exp_extra }
+            exp_extra = (Texp_newtype (name, concrete), loc) :: body.exp_extra }
   | Pexp_pack m ->
       let (p, nl, tl) =
         match Ctype.expand_head env (instance env ty_expected) with
@@ -2811,6 +2855,16 @@ and type_argument env sarg ty_expected' ty_expected =
         | Tarrow (l,ty_arg,ty_fun,_) when is_optional l ->
             let ty = option_none (instance env ty_arg) sarg.pexp_loc in
             make_args ((l, Some ty, Optional) :: args) ty_fun
+        | Tarrow (l,ty_arg,ty_fun,_) when is_implicit_ty l ->
+            let ty = instance env ty_arg in
+            make_args
+              ((l,
+                Some { exp_desc = Texp_implicit;
+                       exp_type = ty; exp_loc = sarg.pexp_loc; exp_env = env;
+                       exp_extra = [] },
+                ImplicitTy)
+               :: args)
+              ty_fun
         | Tarrow (l,_,ty_res',_) when l = "" || !Clflags.classic ->
             args, ty_fun, no_labels ty_res'
         | Tvar _ ->  args, ty_fun, false
@@ -2899,7 +2953,8 @@ and type_application env funct sargs =
               unify env ty_fun (newty (Tarrow(l1,t1,t2,Clink(ref Cunknown))));
               (t1, t2)
           | Tarrow (l,t1,t2,_) when l = l1
-            || !Clflags.classic && l1 = "" && not (is_optional l) ->
+            || !Clflags.classic && l1 = ""
+                && not (is_optional l || is_implicit_ty l) ->
               (t1, t2)
           | td ->
               let ty_fun =
@@ -2916,11 +2971,17 @@ and type_application env funct sargs =
                   raise(Error(funct.exp_loc, env, Apply_non_function
                                 (expand_head env funct.exp_type)))
         in
-        let optional = if is_optional l1 then Optional else Required in
+        let optional =
+          if is_optional l1 then Optional
+          else if is_implicit_ty l1 then ImplicitTy
+          else Required
+        in
         let arg1 () =
           let arg1 = type_expect env sarg1 ty1 in
           if optional = Optional then
             unify_exp env arg1 (type_option(newvar()));
+          if optional = ImplicitTy then
+            unify_exp env arg1 (type_ty(newvar()));
           arg1
         in
         type_unknown_args ((l1, Some arg1, optional) :: args) omitted ty2 sargl
@@ -2930,7 +2991,8 @@ and type_application env funct sargs =
     begin
       let ls, tvar = list_labels env funct.exp_type in
       not tvar &&
-      let labels = List.filter (fun l -> not (is_optional l)) ls in
+      let labels =
+        List.filter (fun l -> not (is_optional l || is_implicit_ty l)) ls in
       List.length labels = List.length sargs &&
       List.for_all (fun (l,_) -> l = "") sargs &&
       List.exists (fun l -> l <> "") labels &&
@@ -2952,9 +3014,13 @@ and type_application env funct sargs =
           end
         in
         let name = label_name l
-        and optional = if is_optional l then Optional else Required in
+        and optional =
+          if is_optional l then Optional
+          else if is_implicit_ty l then ImplicitTy
+          else Required
+        in
         let sargs, more_sargs, arg =
-          if ignore_labels && not (is_optional l) then begin
+          if ignore_labels && not (is_optional l || is_implicit_ty l) then begin
             (* In classic mode, omitted = [] *)
             match sargs, more_sargs with
               (l', sarg0) :: _, _ ->
@@ -2985,11 +3051,11 @@ and type_application env funct sargs =
                     (Warnings.Not_principal "commuting this argument");
                 (l', sarg0, sargs @ sargs1, sargs2)
             in
-            if optional = Required && is_optional l' then
+            if optional = Required && (is_optional l' || is_implicit_ty l') then
               Location.prerr_warning sarg0.pexp_loc
                 (Warnings.Nonoptional_label l);
             sargs, more_sargs,
-            if optional = Required || is_optional l' then
+            if optional = Required || is_optional l' || is_implicit_ty l' then
               Some (fun () -> type_argument env sarg0 ty ty0)
             else begin
               may_warn sarg0.pexp_loc
@@ -3000,7 +3066,18 @@ and type_application env funct sargs =
             end
           with Not_found ->
             sargs, more_sargs,
-            if optional = Optional &&
+            if optional = ImplicitTy &&
+              (List.mem_assoc "" sargs || List.mem_assoc "" more_sargs)
+            then begin
+              may_warn funct.exp_loc
+                (Warnings.Without_principality "eliminated optional argument");
+              ignored := (l,ty,lv) :: !ignored;
+              Some (fun () -> { exp_desc = Texp_implicit;
+                                exp_type = instance env ty;
+                                exp_loc = funct.exp_loc;
+                                exp_env = env;
+                                exp_extra = [] })
+            end else if optional = Optional &&
               (List.mem_assoc "" sargs || List.mem_assoc "" more_sargs)
             then begin
               may_warn funct.exp_loc

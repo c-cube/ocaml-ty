@@ -239,8 +239,9 @@ and expression_extra i ppf x =
   | Texp_poly cto ->
       line i ppf "Pexp_poly\n";
       option i core_type ppf cto;
-  | Texp_newtype s ->
-      line i ppf "Pexp_newtype \"%s\"\n" s;
+  | Texp_newtype (s, concrete) ->
+      line i ppf "Pexp_newtype \"%s%s\"\n"
+        (if concrete then "?" else "") s;
 
 and expression i ppf x =
   line i ppf "expression %a\n" fmt_location x.exp_loc;

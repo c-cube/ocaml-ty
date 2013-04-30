@@ -462,8 +462,6 @@ let reset_and_mark_loops_list tyl =
 
 (* Disabled in classic mode when printing an unification error *)
 let print_labels = ref true
-let print_label ppf l =
-  if !print_labels && l <> "" || is_optional l then fprintf ppf "%s:" l
 
 let rec tree_of_typexp sch ty =
   let ty = repr ty in
@@ -479,13 +477,18 @@ let rec tree_of_typexp sch ty =
     | Tarrow(l, ty1, ty2, _) ->
         let pr_arrow l ty1 ty2 =
           let lab =
-            if !print_labels && l <> "" || is_optional l then l else ""
+            if !print_labels && l <> "" || is_optional l || is_implicit_ty l
+            then l else ""
           in
           let t1 =
-            if is_optional l then
+            if is_optional l || is_implicit_ty l then
+              let expected_path =
+                if is_implicit_ty l
+                then Predef.path_ty
+                else Predef.path_option in
               match (repr ty1).desc with
               | Tconstr(path, [ty], _)
-                when Path.same path Predef.path_option ->
+                when Path.same path expected_path ->
                   tree_of_typexp sch ty
               | _ -> Otyp_stuff "<hidden>"
             else tree_of_typexp sch ty1 in
@@ -905,11 +908,17 @@ let rec tree_of_class_type sch params =
       in
       Octy_signature (self_ty, List.rev csil)
   | Cty_fun (l, ty, cty) ->
-      let lab = if !print_labels && l <> "" || is_optional l then l else "" in
+      let lab =
+        if !print_labels && l <> "" || is_optional l || is_implicit_ty l
+        then l else "" in
       let ty =
-       if is_optional l then
+       if is_optional l || is_implicit_ty l then
+         let expected_path =
+           if is_implicit_ty l
+           then Predef.path_ty
+           else Predef.path_option in
          match (repr ty).desc with
-         | Tconstr(path, [ty], _) when Path.same path Predef.path_option -> ty
+         | Tconstr(path, [ty], _) when Path.same path expected_path -> ty
          | _ -> newconstr (Path.Pident(Ident.create "<hidden>")) []
        else ty in
       let tr = tree_of_typexp sch ty in
