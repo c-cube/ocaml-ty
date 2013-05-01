@@ -613,7 +613,7 @@ and module_expr i ppf x =
   let i = i+1 in
   match x.mod_desc with
   | Tmod_ident (li,_) -> line i ppf "Pmod_ident %a\n" fmt_path li;
-  | Tmod_structure (s) ->
+  | Tmod_structure (s, _) ->
       line i ppf "Pmod_structure\n";
       structure i ppf s;
   | Tmod_functor (s, _, mt, me) ->
@@ -624,7 +624,7 @@ and module_expr i ppf x =
       line i ppf "Pmod_apply\n";
       module_expr i ppf me1;
       module_expr i ppf me2;
-  | Tmod_constraint (me, _, Tmodtype_explicit mt, _) ->
+  | Tmod_constraint (me, _, Tmodtype_explicit (mt, _, _), _) ->
       line i ppf "Pmod_constraint\n";
       module_expr i ppf me;
       module_type i ppf mt;
@@ -659,10 +659,10 @@ and structure_item i ppf x =
       exception_declaration i ppf ed.exn_params;
   | Tstr_exn_rebind (s, _, li, _) ->
       line i ppf "Pstr_exn_rebind \"%a\" %a\n" fmt_ident s fmt_path li;
-  | Tstr_module (s, _, me) ->
+  | Tstr_module (s, _, me, _) ->
       line i ppf "Pstr_module \"%a\"\n" fmt_ident s;
       module_expr i ppf me;
-  | Tstr_recmodule bindings ->
+  | Tstr_recmodule (bindings, _) ->
       line i ppf "Pstr_recmodule\n";
       list i string_x_modtype_x_module ppf bindings;
   | Tstr_modtype (s, _, mt) ->

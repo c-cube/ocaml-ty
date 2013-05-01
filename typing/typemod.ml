@@ -648,7 +648,7 @@ let check_nongen_scheme env str =
           if not (Ctype.closed_schema exp.exp_type) then
             raise(Error(exp.exp_loc, env, Non_generalizable exp.exp_type)))
         pat_exp_list
-  | Tstr_module(id, _, md) ->
+  | Tstr_module(id, _, md, _) ->
       if not (closed_modtype md.mod_type) then
         raise(Error(md.mod_loc, env, Non_generalizable_module md.mod_type))
   | _ -> ()
@@ -759,8 +759,11 @@ let check_recmodule_inclusion env bindings =
           with Includemod.Error msg ->
             raise(Error(modl.mod_loc, env, Not_included msg)) in
         let modl' =
-            { mod_desc = Tmod_constraint(modl, mty_decl.mty_type,
-                Tmodtype_explicit mty_decl, coercion);
+            { mod_desc =
+              Tmod_constraint(modl, mty_decl.mty_type,
+                              (* FIXME GRGR *)
+                              Tmodtype_explicit (mty_decl, Ident.create "dummy", None),
+                              coercion);
             mod_type = mty_decl.mty_type;
             mod_env = env;
             mod_loc = modl.mod_loc } in
@@ -831,7 +834,7 @@ let rec type_module sttn funct_body anchor env smod =
   | Pmod_structure sstr ->
       let (str, sg, finalenv) =
         type_structure funct_body anchor env sstr smod.pmod_loc in
-      rm { mod_desc = Tmod_structure str;
+      rm { mod_desc = Tmod_structure (str, None);
            mod_type = Mty_signature sg;
            mod_env = env;
            mod_loc = smod.pmod_loc }
@@ -878,7 +881,9 @@ let rec type_module sttn funct_body anchor env smod =
   | Pmod_constraint(sarg, smty) ->
       let arg = type_module true funct_body anchor env sarg in
       let mty = transl_modtype env smty in
-      rm {(wrap_constraint env arg mty.mty_type (Tmodtype_explicit mty)) with
+      rm {(wrap_constraint env arg mty.mty_type
+             (* FIXME GRGR *)
+             (Tmodtype_explicit (mty, Ident.create "dummy", None))) with
           mod_loc = smod.pmod_loc}
 
   | Pmod_unpack sexp ->
@@ -1003,7 +1008,8 @@ and type_structure ?(toplevel = false) funct_body anchor env sstr scope =
             smodl in
         let mty = enrich_module_type anchor name.txt modl.mod_type env in
         let (id, newenv) = Env.enter_module name.txt mty env in
-        let item = mk (Tstr_module(id, name, modl)) in
+        (* FIXME GRGR *)
+        let item = mk (Tstr_module(id, name, modl, Pident id)) in
         let (str_rem, sig_rem, final_env) = type_struct newenv srem in
         (item :: str_rem,
          Sig_module(id, modl.mod_type, Trec_not) :: sig_rem,
@@ -1028,7 +1034,8 @@ and type_structure ?(toplevel = false) funct_body anchor env sstr scope =
            decls sbind in
         let bindings2 =
           check_recmodule_inclusion newenv bindings1 in
-        let item = mk (Tstr_recmodule bindings2) in
+        (* FIXME GRGR *)
+        let item = mk (Tstr_recmodule (bindings2, Pident (Ident.create "dummy"))) in
         let (str_rem, sig_rem, final_env) = type_struct newenv srem in
         (item :: str_rem,
          map_rec (fun rs (id, _, _, modl) -> Sig_module(id, modl.mod_type, rs))

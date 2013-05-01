@@ -27,8 +27,8 @@ let structure_item sub x =
       List.iter (fun (_id, _, decl) -> sub # type_declaration decl) list
   | Tstr_exception (_id, _, decl) -> sub # exception_declaration decl
   | Tstr_exn_rebind (_id, _, _p, _) -> ()
-  | Tstr_module (_id, _, mexpr) -> sub # module_expr mexpr
-  | Tstr_recmodule list ->
+  | Tstr_module (_id, _, mexpr, _) -> sub # module_expr mexpr
+  | Tstr_recmodule (list, _) ->
       List.iter
         (fun (_id, _, mtype, mexpr) ->
           sub # module_type mtype;
@@ -222,16 +222,16 @@ let with_constraint sub cstr =
 let module_expr sub mexpr =
   match mexpr.mod_desc with
   | Tmod_ident (_p, _) -> ()
-  | Tmod_structure st -> sub # structure st
+  | Tmod_structure (st, _) -> sub # structure st
   | Tmod_functor (_id, _, mtype, mexpr) ->
       sub # module_type mtype;
       sub # module_expr mexpr
   | Tmod_apply (mexp1, mexp2, _) ->
       sub # module_expr mexp1;
       sub # module_expr mexp2
-  | Tmod_constraint (mexpr, _, Tmodtype_implicit, _ ) ->
+  | Tmod_constraint (mexpr, _, Tmodtype_implicit, _) ->
       sub # module_expr mexpr
-  | Tmod_constraint (mexpr, _, Tmodtype_explicit mtype, _) ->
+  | Tmod_constraint (mexpr, _, Tmodtype_explicit (mtype, _, _), _) ->
       sub # module_expr mexpr;
       sub # module_type mtype
   | Tmod_unpack (exp, _mty) ->

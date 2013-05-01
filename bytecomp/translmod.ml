@@ -243,7 +243,7 @@ and transl_module cc rootpath mexp =
   match mexp.mod_desc with
     Tmod_ident (path,_) ->
       apply_coercion cc (transl_path path)
-  | Tmod_structure str ->
+  | Tmod_structure (str,_) ->
       transl_struct [] cc rootpath str
   | Tmod_functor( param, _, mty, body) ->
       let bodypath = functor_path rootpath param in
@@ -310,10 +310,10 @@ and transl_structure fields cc rootpath = function
   | Tstr_exn_rebind( id, _, path, _) ->
       Llet(Strict, id, transl_path path,
            transl_structure (id :: fields) cc rootpath rem)
-  | Tstr_module( id, _, modl) ->
+  | Tstr_module( id, _, modl, parent) ->
       transl_and_bind_module Tcoerce_none (field_path rootpath id) id modl
         (transl_structure (id :: fields) cc rootpath rem)
-  | Tstr_recmodule bindings ->
+  | Tstr_recmodule (bindings, parent) ->
       let ext_fields =
         List.rev_append (List.map (fun (id, _,_,_) -> id) bindings) fields in
       compile_recmodule
@@ -380,8 +380,8 @@ let rec defined_idents = function
     | Tstr_type decls -> defined_idents rem
     | Tstr_exception(id, _, decl) -> id :: defined_idents rem
     | Tstr_exn_rebind(id, _, path, _) -> id :: defined_idents rem
-    | Tstr_module(id, _, modl) -> id :: defined_idents rem
-    | Tstr_recmodule decls ->
+    | Tstr_module(id, _, modl, _) -> id :: defined_idents rem
+    | Tstr_recmodule (decls, _) ->
       List.map (fun (id, _, _, _) -> id) decls @ defined_idents rem
     | Tstr_modtype(id, _, decl) -> defined_idents rem
     | Tstr_open (path, _) -> defined_idents rem
@@ -402,15 +402,15 @@ let rec more_idents = function
     | Tstr_type decls -> more_idents rem
     | Tstr_exception(id, _, decl) -> more_idents rem
     | Tstr_exn_rebind(id, _, path, _) -> more_idents rem
-    | Tstr_recmodule decls -> more_idents rem
+    | Tstr_recmodule (decls, _) -> more_idents rem
     | Tstr_modtype(id, _, decl) -> more_idents rem
     | Tstr_open (path, _) -> more_idents rem
     | Tstr_class cl_list -> more_idents rem
     | Tstr_class_type cl_list -> more_idents rem
     | Tstr_include(modl, ids) -> more_idents rem
-    | Tstr_module(id, _, { mod_desc = Tmod_structure str }) ->
+    | Tstr_module(id, _, { mod_desc = Tmod_structure (str, _) }, _) ->
       all_idents str.str_items @ more_idents rem
-    | Tstr_module(id, _, _) -> more_idents rem
+    | Tstr_module(id, _, _, _) -> more_idents rem
 
 and all_idents = function
     [] -> []
@@ -423,7 +423,7 @@ and all_idents = function
     | Tstr_type decls -> all_idents rem
     | Tstr_exception(id, _, decl) -> id :: all_idents rem
     | Tstr_exn_rebind(id, _, path, _) -> id :: all_idents rem
-    | Tstr_recmodule decls ->
+    | Tstr_recmodule (decls, _) ->
       List.map (fun (id, _, _, _) -> id) decls @ all_idents rem
     | Tstr_modtype(id, _, decl) -> all_idents rem
     | Tstr_open (path, _) -> all_idents rem
@@ -431,9 +431,9 @@ and all_idents = function
       List.map (fun (ci, _, _) -> ci.ci_id_class) cl_list @ all_idents rem
     | Tstr_class_type cl_list -> all_idents rem
     | Tstr_include(modl, ids) -> ids @ all_idents rem
-    | Tstr_module(id, _, { mod_desc = Tmod_structure str }) ->
+    | Tstr_module(id, _, { mod_desc = Tmod_structure (str, _) }, _) ->
       id :: all_idents str.str_items @ all_idents rem
-    | Tstr_module(id, _, _) -> id :: all_idents rem
+    | Tstr_module(id, _, _, _) -> id :: all_idents rem
 
 
 (* A variant of transl_structure used to compile toplevel structure definitions
@@ -484,7 +484,7 @@ let transl_store_structure glob map prims str =
       let lam = subst_lambda subst (transl_path path) in
       Lsequence(Llet(Strict, id, lam, store_ident id),
                 transl_store rootpath (add_ident false id subst) rem)
-  | Tstr_module(id, _, { mod_desc = Tmod_structure str }) ->
+  | Tstr_module(id, _, { mod_desc = Tmod_structure (str, _) }, parent) ->
     let lam = transl_store (field_path rootpath id) subst str.str_items in
       (* Careful: see next case *)
     let subst = !transl_store_subst in
@@ -497,7 +497,7 @@ let transl_store_structure glob map prims str =
                    Lsequence(store_ident id,
                              transl_store rootpath (add_ident true id subst)
                                           rem)))
-  | Tstr_module( id, _, modl) ->
+  | Tstr_module( id, _, modl, parent) ->
       (* Careful: the module value stored in the global may be different
          from the local module value, in case a coercion is applied.
          If so, keep using the local module value (id) in the remainder of
@@ -508,7 +508,7 @@ let transl_store_structure glob map prims str =
         ~subst Tcoerce_none (field_path rootpath id) id modl
         (Lsequence(store_ident id,
                    transl_store rootpath (add_ident true id subst) rem))
-  | Tstr_recmodule bindings ->
+  | Tstr_recmodule (bindings, parent) ->
       let ids = List.map fst4 bindings in
       compile_recmodule
         (fun id modl ->
@@ -696,13 +696,13 @@ let transl_toplevel_item item =
       toploop_setvalue id (transl_exception id None decl)
   | Tstr_exn_rebind(id, _, path, _) ->
       toploop_setvalue id (transl_path path)
-  | Tstr_module(id, _, modl) ->
+  | Tstr_module(id, _, modl, parent) ->
       (* we need to use the unique name for the module because of issues
          with "open" (PR#1672) *)
       set_toplevel_unique_name id;
       transl_and_bind_module Tcoerce_none (Some(Pident id)) id modl
         (toploop_setvalue_id id)
-  | Tstr_recmodule bindings ->
+  | Tstr_recmodule (bindings, parent) ->
       let idents = List.map fst4 bindings in
       compile_recmodule
         (fun id modl -> transl_module Tcoerce_none (Some(Pident id)) modl)

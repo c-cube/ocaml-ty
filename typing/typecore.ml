@@ -1339,15 +1339,15 @@ and is_nonexpansive_mod mexp =
   | Tmod_functor _ -> true
   | Tmod_unpack (e, _) -> is_nonexpansive e
   | Tmod_constraint (m, _, _, _) -> is_nonexpansive_mod m
-  | Tmod_structure str ->
+  | Tmod_structure (str, _) ->
       List.for_all
         (fun item -> match item.str_desc with
           | Tstr_eval _ | Tstr_primitive _ | Tstr_type _ | Tstr_modtype _
           | Tstr_open _ | Tstr_class_type _ | Tstr_exn_rebind _ -> true
           | Tstr_value (_, pat_exp_list) ->
               List.for_all (fun (_, exp) -> is_nonexpansive exp) pat_exp_list
-          | Tstr_module (_, _, m) | Tstr_include (m, _) -> is_nonexpansive_mod m
-          | Tstr_recmodule id_mod_list ->
+          | Tstr_module (_, _, m, _) | Tstr_include (m, _) -> is_nonexpansive_mod m
+          | Tstr_recmodule (id_mod_list, _) ->
               List.for_all (fun (_, _, _, m) -> is_nonexpansive_mod m)
                 id_mod_list
           | Tstr_exception _ -> false (* true would be unsound *)

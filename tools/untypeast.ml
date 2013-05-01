@@ -56,9 +56,9 @@ and untype_structure_item item =
         Pstr_exception (name, untype_exception_declaration decl)
     | Tstr_exn_rebind (_id, name, _p, lid) ->
         Pstr_exn_rebind (name, lid)
-    | Tstr_module (_id, name, mexpr) ->
+    | Tstr_module (_id, name, mexpr, _) ->
         Pstr_module (name, untype_module_expr mexpr)
-    | Tstr_recmodule list ->
+    | Tstr_recmodule (list, _) ->
         Pstr_recmodule (List.map (fun (_id, name, mtype, mexpr) ->
               name, untype_module_type mtype,
               untype_module_expr mexpr) list)
@@ -382,18 +382,18 @@ and untype_with_constraint cstr =
 
 and untype_module_expr mexpr =
   match mexpr.mod_desc with
-    Tmod_constraint (m, _, Tmodtype_implicit, _ ) ->
+    Tmod_constraint (m, _, Tmodtype_implicit, _) ->
       untype_module_expr m
   | _ ->
       let desc = match mexpr.mod_desc with
           Tmod_ident (_p, lid) -> Pmod_ident (lid)
-        | Tmod_structure st -> Pmod_structure (untype_structure st)
+        | Tmod_structure (st, _) -> Pmod_structure (untype_structure st)
         | Tmod_functor (_id, name, mtype, mexpr) ->
             Pmod_functor (name, untype_module_type mtype,
               untype_module_expr mexpr)
         | Tmod_apply (mexp1, mexp2, _) ->
             Pmod_apply (untype_module_expr mexp1, untype_module_expr mexp2)
-        | Tmod_constraint (mexpr, _, Tmodtype_explicit mtype, _) ->
+        | Tmod_constraint (mexpr, _, Tmodtype_explicit (mtype, _, _), _) ->
             Pmod_constraint (untype_module_expr mexpr,
               untype_module_type mtype)
         | Tmod_constraint (_mexpr, _, Tmodtype_implicit, _) ->

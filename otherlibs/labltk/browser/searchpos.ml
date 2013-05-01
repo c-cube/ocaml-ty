@@ -675,7 +675,7 @@ let rec search_pos_structure ~pos str =
   | Tstr_exception _ -> ()
   | Tstr_exn_rebind(_, _, _, _) -> ()
   | Tstr_module (_, _, m) -> search_pos_module_expr m ~pos
-  | Tstr_recmodule bindings ->
+  | Tstr_recmodule (bindings, _) ->
       List.iter bindings ~f:(fun (_, _, _, m) -> search_pos_module_expr m ~pos)
   | Tstr_modtype _ -> ()
   | Tstr_open _ -> ()
@@ -805,7 +805,7 @@ and search_pos_expr ~pos exp =
         ~env:exp.exp_env ~loc:exp.exp_loc
   | Texp_override (_, l) ->
       List.iter l ~f:(fun (_, _, exp) -> search_pos_expr exp ~pos)
-  | Texp_letmodule (id, _, modexp, exp) ->
+  | Texp_letmodule (id, _, _, modexp, exp) ->
       search_pos_module_expr modexp ~pos;
       search_pos_expr exp ~pos
   | Texp_assertfalse -> ()

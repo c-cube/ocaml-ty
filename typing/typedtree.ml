@@ -166,11 +166,11 @@ and module_expr =
 
 and module_type_constraint =
   Tmodtype_implicit
-| Tmodtype_explicit of module_type
+| Tmodtype_explicit of module_type * Ident.t * Path.t option
 
 and module_expr_desc =
     Tmod_ident of Path.t * Longident.t loc
-  | Tmod_structure of structure
+  | Tmod_structure of structure * Ident.t option
   | Tmod_functor of Ident.t * string loc * module_type * module_expr
   | Tmod_apply of module_expr * module_expr * module_coercion
   | Tmod_constraint of
@@ -196,8 +196,9 @@ and structure_item_desc =
   | Tstr_type of (Ident.t * string loc * type_declaration) list
   | Tstr_exception of Ident.t * string loc * exception_declaration
   | Tstr_exn_rebind of Ident.t * string loc * Path.t * Longident.t loc
-  | Tstr_module of Ident.t * string loc * module_expr
-  | Tstr_recmodule of (Ident.t * string loc * module_type * module_expr) list
+  | Tstr_module of Ident.t * string loc * module_expr * Path.t
+  | Tstr_recmodule of
+      (Ident.t * string loc * module_type * module_expr) list * Path.t
   | Tstr_modtype of Ident.t * string loc * module_type
   | Tstr_open of Path.t * Longident.t loc
   | Tstr_class of (class_declaration * string list * virtual_flag) list

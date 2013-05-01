@@ -64,13 +64,14 @@ module Typedtree_search =
 
     let add_to_hashes table table_values tt =
       match tt with
-      | Typedtree.Tstr_module (ident, _, _) ->
+      | Typedtree.Tstr_module (ident, _, _, _) ->
           Hashtbl.add table (M (Name.from_ident ident)) tt
-      | Typedtree.Tstr_recmodule mods ->
+      | Typedtree.Tstr_recmodule (mods, _) ->
           List.iter
             (fun (ident,ident_loc, _, mod_expr) ->
               Hashtbl.add table (M (Name.from_ident ident))
-                (Typedtree.Tstr_module (ident,ident_loc, mod_expr))
+                (Typedtree.Tstr_module (ident,ident_loc, mod_expr,
+                                        Path.Pident ident))
             )
             mods
       | Typedtree.Tstr_modtype (ident, _, _) ->
@@ -120,7 +121,7 @@ module Typedtree_search =
 
     let search_module table name =
       match Hashtbl.find table (M name) with
-        (Typedtree.Tstr_module (_, _, module_expr)) -> module_expr
+        (Typedtree.Tstr_module (_, _, module_expr, _)) -> module_expr
       | _ -> assert false
 
     let search_module_type table name =
@@ -1582,7 +1583,7 @@ module Analyser =
           { m_base with m_kind = Module_alias { ma_name = alias_name ;
                                                 ma_module = None ; } }
 
-      | (Parsetree.Pmod_structure p_structure, Typedtree.Tmod_structure tt_structure) ->
+      | (Parsetree.Pmod_structure p_structure, Typedtree.Tmod_structure (tt_structure, _)) ->
           let elements = analyse_structure env complete_name pos_start pos_end p_structure tt_structure in
           (* we must complete the included modules *)
           let included_modules_from_tt = tt_get_included_module_list tt_structure in
@@ -1672,7 +1673,7 @@ module Analyser =
 
       | (Parsetree.Pmod_structure p_structure,
          Typedtree.Tmod_constraint
-           ({ Typedtree.mod_desc = Typedtree.Tmod_structure tt_structure},
+           ({ Typedtree.mod_desc = Typedtree.Tmod_structure (tt_structure, _)},
             tt_modtype, _, _)
         ) ->
           (* needed for recursive modules *)

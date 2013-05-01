@@ -133,9 +133,9 @@ module MakeIterator(Iter : IteratorArgument) : sig
             List.iter (fun (id, _, decl) -> iter_type_declaration decl) list
         | Tstr_exception (id, _, decl) -> iter_exception_declaration decl
         | Tstr_exn_rebind (id, _, p, _) -> ()
-        | Tstr_module (id, _, mexpr) ->
+        | Tstr_module (id, _, mexpr, _) ->
             iter_module_expr mexpr
-        | Tstr_recmodule list ->
+        | Tstr_recmodule (list, _) ->
             List.iter (fun (id, _, mtype, mexpr) ->
                 iter_module_type mtype;
                 iter_module_expr mexpr) list
@@ -416,16 +416,16 @@ module MakeIterator(Iter : IteratorArgument) : sig
       begin
         match mexpr.mod_desc with
           Tmod_ident (p, _) -> ()
-        | Tmod_structure st -> iter_structure st
+        | Tmod_structure (st, _) -> iter_structure st
         | Tmod_functor (id, _, mtype, mexpr) ->
             iter_module_type mtype;
             iter_module_expr mexpr
         | Tmod_apply (mexp1, mexp2, _) ->
             iter_module_expr mexp1;
             iter_module_expr mexp2
-        | Tmod_constraint (mexpr, _, Tmodtype_implicit, _ ) ->
+        | Tmod_constraint (mexpr, _, Tmodtype_implicit, _) ->
             iter_module_expr mexpr
-        | Tmod_constraint (mexpr, _, Tmodtype_explicit mtype, _) ->
+        | Tmod_constraint (mexpr, _, Tmodtype_explicit (mtype, _, _), _) ->
             iter_module_expr mexpr;
             iter_module_type mtype
         | Tmod_unpack (exp, mty) ->

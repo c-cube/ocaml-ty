@@ -110,15 +110,15 @@ module MakeMap(Map : MapArgument) = struct
           Tstr_exception (id, name, map_exception_declaration decl)
         | Tstr_exn_rebind (id, name, path, lid) ->
           Tstr_exn_rebind (id, name, path, lid)
-        | Tstr_module (id, name, mexpr) ->
-          Tstr_module (id, name, map_module_expr mexpr)
-        | Tstr_recmodule list ->
+        | Tstr_module (id, name, mexpr, anchor) ->
+          Tstr_module (id, name, map_module_expr mexpr, anchor)
+        | Tstr_recmodule (list, anchor) ->
           let list =
             List.map (fun (id, name, mtype, mexpr) ->
               (id, name, map_module_type mtype, map_module_expr mexpr)
             ) list
           in
-          Tstr_recmodule list
+          Tstr_recmodule (list, anchor)
         | Tstr_modtype (id, name, mtype) ->
           Tstr_modtype (id, name, map_module_type mtype)
         | Tstr_open (path, lid) -> Tstr_open (path, lid)
@@ -465,19 +465,19 @@ module MakeMap(Map : MapArgument) = struct
     let mod_desc =
       match mexpr.mod_desc with
           Tmod_ident (p, lid) -> mexpr.mod_desc
-        | Tmod_structure st -> Tmod_structure (map_structure st)
+        | Tmod_structure (st, dynid) -> Tmod_structure (map_structure st, dynid)
         | Tmod_functor (id, name, mtype, mexpr) ->
           Tmod_functor (id, name, map_module_type mtype,
                         map_module_expr mexpr)
         | Tmod_apply (mexp1, mexp2, coercion) ->
           Tmod_apply (map_module_expr mexp1, map_module_expr mexp2, coercion)
-        | Tmod_constraint (mexpr, mod_type, Tmodtype_implicit, coercion ) ->
+        | Tmod_constraint (mexpr, mod_type, Tmodtype_implicit, coercion) ->
           Tmod_constraint (map_module_expr mexpr, mod_type,
                            Tmodtype_implicit, coercion)
         | Tmod_constraint (mexpr, mod_type,
-                           Tmodtype_explicit mtype, coercion) ->
+                           Tmodtype_explicit (mtype, id, p), coercion) ->
           Tmod_constraint (map_module_expr mexpr, mod_type,
-                           Tmodtype_explicit (map_module_type mtype),
+                           Tmodtype_explicit (map_module_type mtype, id, p),
                            coercion)
         | Tmod_unpack (exp, mod_type) ->
           Tmod_unpack (map_expression exp, mod_type)
