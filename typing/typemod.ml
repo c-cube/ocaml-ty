@@ -584,14 +584,16 @@ and transl_modtype_info env sinfo =
       let tmty = transl_modtype env smty in
       Tmodtype_manifest tmty, Modtype_manifest tmty.mty_type
 
-and transl_recmodule_modtypes loc env sdecls =
+and transl_recmodule_modtypes ?anchor loc env sdecls =
   let make_env curr =
     List.fold_left
       (fun env (id, _, mty) -> Env.add_module id mty env)
       env curr in
   let make_env2 curr =
     List.fold_left
-      (fun env (id, _, mty) -> Env.add_module id mty.mty_type env)
+      (fun env (id, _, mty) ->
+        let anchor = may_map (Env.anchor_submodule id) anchor in
+        Env.add_module ?anchor id mty.mty_type env)
       env curr in
   let transition env_c curr =
     List.map2
@@ -672,13 +674,8 @@ let rec bound_value_identifiers = function
 
 (* Helpers for typing recursive modules *)
 
-let anchor_submodule name anchor =
-  match anchor with None -> None | Some p -> Some(Pdot(p, name, nopos))
-let anchor_recmodule id anchor =
-  Some (Pident id)
-
 let enrich_type_decls anchor decls oldenv newenv =
-  match anchor with
+  match Env.recpath anchor with
     None -> newenv
   | Some p ->
       List.fold_left
@@ -687,11 +684,11 @@ let enrich_type_decls anchor decls oldenv newenv =
             Mtype.enrich_typedecl oldenv (Pdot(p, Ident.name id, nopos))
               info.typ_type
           in
-            Env.add_type id info' e)
+          Env.add_type id info' e)
         oldenv decls
 
 let enrich_module_type anchor name mty env =
-  match anchor with
+  match Env.recpath anchor with
     None -> mty
   | Some p -> Mtype.enrich_modtype env (Pdot(p, name, nopos)) mty
 
@@ -725,7 +722,7 @@ let check_recmodule_inclusion env bindings =
       (* Generate fresh names Y_i for the rec. bound module idents X_i *)
       let bindings1 =
         List.map
-          (fun (id, _, mty_decl, modl, mty_actual) ->
+          (fun (id, _, mty_decl, modl, mty_actual, _, _) ->
              (id, Ident.rename id, mty_actual))
           bindings in
       (* Enter the Y_i in the environment with their actual types substituted
@@ -750,7 +747,8 @@ let check_recmodule_inclusion env bindings =
     end else begin
       (* Base case: check inclusion of s(mty_actual) in s(mty_decl)
          and insert coercion if needed *)
-      let check_inclusion (id, id_loc, mty_decl, modl, mty_actual) =
+      let check_inclusion
+          (id, id_loc, mty_decl, modl, mty_actual, dynid, parent) =
         let mty_decl' = Subst.modtype s mty_decl.mty_type
         and mty_actual' = subst_and_strengthen env s id mty_actual in
         let coercion =
@@ -761,8 +759,7 @@ let check_recmodule_inclusion env bindings =
         let modl' =
             { mod_desc =
               Tmod_constraint(modl, mty_decl.mty_type,
-                              (* FIXME GRGR *)
-                              Tmodtype_explicit (mty_decl, Ident.create "dummy", None),
+                              Tmodtype_explicit (mty_decl, dynid, Some parent),
                               coercion);
             mod_type = mty_decl.mty_type;
             mod_env = env;
@@ -832,16 +829,21 @@ let rec type_module sttn funct_body anchor env smod =
            mod_env = env;
            mod_loc = smod.pmod_loc }
   | Pmod_structure sstr ->
+      let (dynid, anchor) = Env.anchor_structure anchor in
       let (str, sg, finalenv) =
         type_structure funct_body anchor env sstr smod.pmod_loc in
-      rm { mod_desc = Tmod_structure (str, None);
+      rm { mod_desc = Tmod_structure (str, dynid);
            mod_type = Mty_signature sg;
            mod_env = env;
            mod_loc = smod.pmod_loc }
   | Pmod_functor(name, smty, sbody) ->
       let mty = transl_modtype env smty in
-      let (id, newenv) = Env.enter_module name.txt mty.mty_type env in
-      let body = type_module sttn true None newenv sbody in
+      let id = Ident.create name.txt in
+      let arg_anchor = Env.named_anchor id in
+      let newenv =
+        Env.add_module ~anchor:arg_anchor id mty.mty_type env in
+      let anchor = may_map (Env.anchor_functor (Pident id)) anchor in
+      let body = type_module sttn true anchor newenv sbody in
       rm { mod_desc = Tmod_functor(id, name, mty, body);
            mod_type = Mty_functor(id, mty.mty_type, body.mod_type);
            mod_env = env;
@@ -879,12 +881,12 @@ let rec type_module sttn funct_body anchor env smod =
           raise(Error(sfunct.pmod_loc, env, Cannot_apply funct.mod_type))
       end
   | Pmod_constraint(sarg, smty) ->
-      let arg = type_module true funct_body anchor env sarg in
       let mty = transl_modtype env smty in
-      rm {(wrap_constraint env arg mty.mty_type
-             (* FIXME GRGR *)
-             (Tmodtype_explicit (mty, Ident.create "dummy", None))) with
-          mod_loc = smod.pmod_loc}
+      let (dynid, anchor, parent) = Env.anchor_constraint anchor in
+      let arg = type_module true funct_body (Some anchor) env sarg in
+      let modl = wrap_constraint env arg mty.mty_type
+                                 (Tmodtype_explicit (mty, dynid, parent)) in
+      rm { modl with mod_loc = smod.pmod_loc}
 
   | Pmod_unpack sexp ->
       if funct_body then
@@ -1003,13 +1005,13 @@ and type_structure ?(toplevel = false) funct_body anchor env sstr scope =
          final_env)
     | Pstr_module(name, smodl) ->
         check "module" loc module_names name.txt;
-        let modl =
-          type_module true funct_body (anchor_submodule name.txt anchor) env
-            smodl in
+        let dynpath = Env.anchor anchor in
+        let id = Ident.create name.txt in
+        let anchor = Env.anchor_submodule id anchor in
+        let modl = type_module true funct_body (Some anchor) env smodl in
         let mty = enrich_module_type anchor name.txt modl.mod_type env in
-        let (id, newenv) = Env.enter_module name.txt mty env in
-        (* FIXME GRGR *)
-        let item = mk (Tstr_module(id, name, modl, Pident id)) in
+        let newenv = Env.add_module ~anchor id mty env in
+        let item = mk (Tstr_module(id, name, modl, dynpath)) in
         let (str_rem, sig_rem, final_env) = type_struct newenv srem in
         (item :: str_rem,
          Sig_module(id, modl.mod_type, Trec_not) :: sig_rem,
@@ -1019,23 +1021,21 @@ and type_structure ?(toplevel = false) funct_body anchor env sstr scope =
           (fun (name, _, _) -> check "module" loc module_names name.txt)
           sbind;
         let (decls, newenv) =
-          transl_recmodule_modtypes loc env
+          transl_recmodule_modtypes ~anchor loc env
             (List.map (fun (name, smty, smodl) -> (name, smty)) sbind) in
         let bindings1 =
           List.map2
             (fun (id, _, mty) (name, _, smodl) ->
+              let (dynpath_id, anchor, parent) =
+                Env.anchor_recsubmodule env id mty.mty_type anchor in
               let modl =
-                type_module true funct_body (anchor_recmodule id anchor) newenv
-                  smodl in
+                type_module true funct_body (Some anchor) newenv smodl in
               let mty' =
-                enrich_module_type anchor (Ident.name id) modl.mod_type newenv
-              in
-              (id, name, mty, modl, mty'))
+                enrich_module_type anchor name.txt modl.mod_type newenv in
+              (id, name, mty, modl, mty', dynpath_id, parent))
            decls sbind in
-        let bindings2 =
-          check_recmodule_inclusion newenv bindings1 in
-        (* FIXME GRGR *)
-        let item = mk (Tstr_recmodule (bindings2, Pident (Ident.create "dummy"))) in
+        let bindings2 = check_recmodule_inclusion newenv bindings1 in
+        let item = mk (Tstr_recmodule (bindings2, Env.anchor anchor)) in
         let (str_rem, sig_rem, final_env) = type_struct newenv srem in
         (item :: str_rem,
          map_rec (fun rs (id, _, _, modl) -> Sig_module(id, modl.mod_type, rs))
@@ -1120,7 +1120,7 @@ and type_structure ?(toplevel = false) funct_body anchor env sstr scope =
                    (extract_sig_open env smodl.pmod_loc modl.mod_type) in
         List.iter
           (check_sig_item type_names module_names modtype_names loc) sg;
-        let new_env = Env.add_signature sg env in
+        let new_env = Env.add_signature ~anchor sg env in
         let item = mk (Tstr_include (modl, bound_value_identifiers sg)) in
         let (str_rem, sig_rem, final_env) = type_struct new_env srem in
         (item :: str_rem,
@@ -1137,9 +1137,10 @@ and type_structure ?(toplevel = false) funct_body anchor env sstr scope =
     (Cmt_format.Partial_structure str :: previous_saved_types);
   str, sg, final_env
 
-let type_toplevel_phrase env s = type_structure ~toplevel:true false None env s Location.none
-let type_module = type_module true false None
-let type_structure = type_structure false None
+let type_toplevel_phrase anchor env s =
+  type_structure ~toplevel:true false anchor env s Location.none
+let type_module = type_module true false
+let type_structure = type_structure false
 
 (* Normalize types in a signature *)
 
@@ -1198,7 +1199,7 @@ let type_module_type_of env smod =
              mod_type = mty;
              mod_env = env;
              mod_loc = smod.pmod_loc }
-    | _ -> type_module env smod in
+    | _ -> type_module None env smod in
   let mty = tmty.mod_type in
   (* PR#5037: clean up inferred signature to remove duplicate specs *)
   let mty = simplify_modtype mty in
@@ -1222,7 +1223,7 @@ let type_package env m p nl tl =
   Ctype.begin_def ();
   Ident.set_current_time lv;
   let context = Typetexp.narrow () in
-  let modl = type_module env m in
+  let modl = type_module None env m in
   Ctype.init_def(Ident.current_time());
   Typetexp.widen context;
   let (mp, env) =
@@ -1267,8 +1268,9 @@ let type_implementation sourcefile outputprefix modulename initial_env ast =
   Cmt_format.set_saved_types [];
   try
   Typecore.reset_delayed_checks ();
+  let anchor = Env.named_anchor (Ident.create_persistent modulename) in
   let (str, sg, finalenv) =
-    type_structure initial_env ast (Location.in_file sourcefile) in
+    type_structure anchor initial_env ast (Location.in_file sourcefile) in
   let simple_sg = simplify_signature sg in
   if !Clflags.print_types then begin
     Printtyp.wrap_printing_env initial_env

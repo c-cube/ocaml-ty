@@ -69,8 +69,9 @@ exception Error of Location.t * Env.t * error
 (* Forward declaration, to be filled in by Typemod.type_module *)
 
 let type_module =
-  ref ((fun env md -> assert false) :
-       Env.t -> Parsetree.module_expr -> Typedtree.module_expr)
+  ref ((fun anchor env md -> assert false) :
+         Env.anchor option -> Env.t -> Parsetree.module_expr ->
+           Typedtree.module_expr)
 
 (* Forward declaration, to be filled in by Typemod.type_open *)
 
@@ -2541,8 +2542,10 @@ and type_expect_ ?in_function env sexp ty_expected =
       begin_def ();
       Ident.set_current_time ty.level;
       let context = Typetexp.narrow () in
-      let modl = !type_module env smodl in
-      let (id, new_env) = Env.enter_module name.txt modl.mod_type env in
+      let id = Ident.create name.txt in
+      let anchor = Env.named_anchor id in
+      let modl = !type_module (Some anchor) env smodl in
+      let new_env = Env.add_module ~anchor id modl.mod_type env in
       Ctype.init_def(Ident.current_time());
       Typetexp.widen context;
       let body = type_expect new_env sbody ty_expected in

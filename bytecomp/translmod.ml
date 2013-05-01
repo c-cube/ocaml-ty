@@ -42,10 +42,11 @@ let rec apply_coercion restr arg =
   | Tcoerce_functor(cc_arg, cc_res) ->
       let param = Ident.create "funarg" in
       name_lambda arg (fun id ->
-        Lfunction(Curried, [param],
-          apply_coercion cc_res
-            (Lapply(Lvar id, [apply_coercion cc_arg (Lvar param)],
-                    Location.none))))
+        Lfunction(Curried, [Ident.dynpath param; param],
+                  apply_coercion cc_res
+                    (Lapply(Lvar id, [Lvar (Ident.dynpath param);
+                                      apply_coercion cc_arg (Lvar param)],
+                            Location.none))))
   | Tcoerce_primitive p ->
       transl_primitive Location.none p
 
@@ -219,15 +220,23 @@ let eval_rec_bindings bindings cont =
   in
     bind_inits bindings
 
-let compile_recmodule compile_rhs bindings cont =
-  eval_rec_bindings
-    (reorder_rec_bindings
-      (List.map
-        (fun ( id, _, _, modl) ->
-                  (id, modl.mod_loc, init_shape modl, compile_rhs id modl))
-        bindings))
-    cont
+let bind_submodule_dynpath env parent id body =
+  Llet(Strict, Ident.dynpath id,
+       Transltyrepr.transl_dynpath env (Pdot(parent, Ident.name id, nopos)),
+       body)
 
+let compile_recmodule parent compile_rhs bindings cont =
+  let body =
+    eval_rec_bindings
+      (reorder_rec_bindings
+         (List.map
+            (fun (id, _, _, modl) ->
+              (id, modl.mod_loc, init_shape modl, compile_rhs id modl))
+            bindings))
+      cont in
+  List.fold_right
+    (fun (id, _, _, modl) -> bind_submodule_dynpath modl.mod_env parent id)
+    bindings body
 
 (* Compile a module expression *)
 
@@ -237,38 +246,85 @@ let rec transl_and_bind_module ?subst cc rootpath id mexp body =
     | None -> lam
     | Some subst -> subst_lambda subst lam
   in
-  Llet(Strict, id, subst_lambda (transl_module cc rootpath mexp), body)
+  let bind ~dynpath ~str =
+    Llet(Strict, Ident.dynpath id, subst_lambda dynpath,
+         Llet(Strict, id, subst_lambda str,
+              body)) in
+  match mexp.mod_desc with
+  | Tmod_ident (path,_) ->
+      let dynid = Env.find_module_dynid path mexp.mod_env in
+      bind ~dynpath:(Transltyrepr.transl_dynpath mexp.mod_env dynid)
+           ~str:(apply_coercion cc (transl_path path))
+  | Tmod_structure (str, Some dynid) ->
+      bind ~dynpath:Transltyrepr.dynpath_new_anonymous_id
+           ~str:(Llet (Alias, Ident.dynpath dynid, Lvar (Ident.dynpath id),
+                       transl_struct [] cc rootpath str))
+  | Tmod_apply(funct, arg, ccarg) ->
+      let funct_id = Ident.create "funct" in
+      let arg_id = Ident.create "param" in
+      oo_wrap mexp.mod_env true
+        (apply_coercion cc)
+        (transl_and_bind_module ccarg None arg_id arg
+           (transl_and_bind_module Tcoerce_none None funct_id funct
+              (bind ~dynpath:(Transltyrepr.dynpath_apply
+                                (Lvar (Ident.dynpath funct_id))
+                                (Lvar (Ident.dynpath arg_id)))
+                   ~str:(Lapply(Lvar funct_id,
+                                [Lvar (Ident.dynpath arg_id); Lvar arg_id],
+                                mexp.mod_loc)))))
+  | Tmod_constraint(arg, _, Tmodtype_implicit, ccarg) ->
+      transl_and_bind_module
+        (compose_coercions cc ccarg) rootpath id arg body
+  | Tmod_unpack (e, _) ->
+      name_lambda (subst_lambda (Translcore.transl_exp e)) (fun id' ->
+        bind ~dynpath:(Lprim (Pfield 0, [Lvar id']))
+             ~str:(apply_coercion cc (Lprim (Pfield 1, [Lvar id']))))
+  | _ ->
+      bind ~dynpath:(Transltyrepr.transl_module_dynpath mexp)
+           ~str:(transl_module cc rootpath mexp)
+
 
 and transl_module cc rootpath mexp =
   match mexp.mod_desc with
     Tmod_ident (path,_) ->
       apply_coercion cc (transl_path path)
-  | Tmod_structure (str,_) ->
+  | Tmod_structure (str, Some dynid) ->
+      Llet(Strict, Ident.dynpath dynid, Transltyrepr.dynpath_new_anonymous_id,
+           transl_struct [] cc rootpath str)
+  | Tmod_structure (str, None) ->
       transl_struct [] cc rootpath str
   | Tmod_functor( param, _, mty, body) ->
       let bodypath = functor_path rootpath param in
       oo_wrap mexp.mod_env true
         (function
         | Tcoerce_none ->
-            Lfunction(Curried, [param],
+            Lfunction(Curried, [Ident.dynpath param; param],
                       transl_module Tcoerce_none bodypath body)
         | Tcoerce_functor(ccarg, ccres) ->
             let param' = Ident.create "funarg" in
-            Lfunction(Curried, [param'],
+            Lfunction(Curried, [Ident.dynpath param; param'],
                       Llet(Alias, param, apply_coercion ccarg (Lvar param'),
                            transl_module ccres bodypath body))
         | _ ->
             fatal_error "Translmod.transl_module")
         cc
   | Tmod_apply(funct, arg, ccarg) ->
+      let arg_id = Ident.create "param" in
       oo_wrap mexp.mod_env true
         (apply_coercion cc)
-        (Lapply(transl_module Tcoerce_none None funct,
-                [transl_module ccarg None arg], mexp.mod_loc))
-  | Tmod_constraint(arg, mty, _, ccarg) ->
+        (transl_and_bind_module ccarg None arg_id arg
+           (Lapply(transl_module Tcoerce_none None funct,
+                   [Lvar (Ident.dynpath arg_id); Lvar arg_id],
+                   mexp.mod_loc)))
+  | Tmod_constraint(arg, _, Tmodtype_explicit (_, dynid, parent), ccarg) ->
+      Llet(Strict, Ident.dynpath dynid,
+           Transltyrepr.dynpath_new_coercion_id mexp.mod_env parent,
+           transl_module (compose_coercions cc ccarg) rootpath arg)
+  | Tmod_constraint(arg, _, Tmodtype_implicit, ccarg) ->
       transl_module (compose_coercions cc ccarg) rootpath arg
   | Tmod_unpack(arg, _) ->
-      apply_coercion cc (Translcore.transl_exp arg)
+      apply_coercion cc
+        (Lprim (Pfield 1, [Translcore.transl_exp arg]))
 
 and transl_struct fields cc rootpath str =
   transl_structure fields cc rootpath str.str_items
@@ -311,12 +367,14 @@ and transl_structure fields cc rootpath = function
       Llet(Strict, id, transl_path path,
            transl_structure (id :: fields) cc rootpath rem)
   | Tstr_module( id, _, modl, parent) ->
-      transl_and_bind_module Tcoerce_none (field_path rootpath id) id modl
-        (transl_structure (id :: fields) cc rootpath rem)
+      bind_submodule_dynpath modl.mod_env parent id
+        (Llet(Strict, id,
+              transl_module Tcoerce_none (field_path rootpath id) modl,
+              (transl_structure (id :: fields) cc rootpath rem)))
   | Tstr_recmodule (bindings, parent) ->
       let ext_fields =
-        List.rev_append (List.map (fun (id, _,_,_) -> id) bindings) fields in
-      compile_recmodule
+        List.rev_append (List.map (fun (id,_,_,_) -> id) bindings) fields in
+      compile_recmodule parent
         (fun id modl ->
           transl_module Tcoerce_none (field_path rootpath id) modl)
         bindings
@@ -348,11 +406,14 @@ and transl_structure fields cc rootpath = function
         (rebind_idents 0 fields ids)
 
 let transl_packed_module mexp =
-  transl_module Tcoerce_none None mexp
+  let id = Ident.create "pack" in
+  transl_and_bind_module Tcoerce_none None id mexp
+    (Lprim (Pmakeblock (0, Immutable), [Lvar (Ident.dynpath id); Lvar id]))
 
 (* Update forward declaration in Translcore *)
 let _ =
-  Translcore.transl_and_bind_module := transl_and_bind_module Tcoerce_none None;
+  Translcore.transl_and_bind_module :=
+    transl_and_bind_module Tcoerce_none None;
   Translcore.transl_packed_module := transl_packed_module
 
 (* Compile an implementation *)
@@ -363,8 +424,7 @@ let transl_implementation module_name (str, cc) =
   let module_id = Ident.create_persistent module_name in
   Lprim(Psetglobal module_id,
         [transl_label_init
-            (transl_struct [] cc (global_path module_id) str)])
-
+           (transl_struct [] cc (global_path module_id) str)])
 
 (* Build the list of value identifiers defined by a toplevel structure
    (excluding primitive declarations). *)
@@ -456,7 +516,7 @@ let nat_toplevel_name id =
   with Not_found ->
     fatal_error("Translmod.nat_toplevel_name: " ^ Ident.unique_name id)
 
-let transl_store_structure glob map prims str =
+let transl_store_structure glob rootpath map prims str =
   let rec transl_store rootpath subst = function
     [] ->
       transl_store_subst := subst;
@@ -488,15 +548,18 @@ let transl_store_structure glob map prims str =
     let lam = transl_store (field_path rootpath id) subst str.str_items in
       (* Careful: see next case *)
     let subst = !transl_store_subst in
-    Lsequence(lam,
-              Llet(Strict, id,
-                   subst_lambda subst
-                   (Lprim(Pmakeblock(0, Immutable),
-                          List.map (fun id -> Lvar id)
+    Llet(Strict, Ident.dynpath id,
+         Transltyrepr.transl_dynpath
+           item.str_env (Pdot(parent, Ident.name id, nopos)),
+         Lsequence(lam,
+                   Llet(Strict, id,
+                        subst_lambda subst
+                          (Lprim(Pmakeblock(0, Immutable),
+                                 List.map (fun id -> Lvar id)
                                    (defined_idents str.str_items))),
-                   Lsequence(store_ident id,
-                             transl_store rootpath (add_ident true id subst)
-                                          rem)))
+                        Lsequence(store_ident id,
+                                  transl_store
+                                    rootpath (add_ident true id subst) rem))))
   | Tstr_module( id, _, modl, parent) ->
       (* Careful: the module value stored in the global may be different
          from the local module value, in case a coercion is applied.
@@ -504,13 +567,14 @@ let transl_store_structure glob map prims str =
          the compilation unit (add_ident true returns subst unchanged).
          If not, we can use the value from the global
          (add_ident true adds id -> Pgetglobal... to subst). *)
-      transl_and_bind_module
-        ~subst Tcoerce_none (field_path rootpath id) id modl
-        (Lsequence(store_ident id,
-                   transl_store rootpath (add_ident true id subst) rem))
+      bind_submodule_dynpath modl.mod_env parent id
+        (Llet(Strict, id,
+              transl_module Tcoerce_none (field_path rootpath id) modl,
+              (Lsequence(store_ident id,
+                         transl_store rootpath (add_ident true id subst) rem))))
   | Tstr_recmodule (bindings, parent) ->
       let ids = List.map fst4 bindings in
-      compile_recmodule
+      compile_recmodule parent
         (fun id modl ->
           subst_lambda subst
             (transl_module Tcoerce_none
@@ -578,7 +642,7 @@ let transl_store_structure glob map prims str =
               cont)
 
   in List.fold_right store_primitive prims
-                     (transl_store (global_path glob) !transl_store_subst str)
+                     (transl_store rootpath !transl_store_subst str)
 
 (* Transform a coercion and the list of value identifiers defined by
    a toplevel structure into a table [id -> (pos, coercion)],
@@ -632,7 +696,8 @@ let transl_store_gen module_name ({ str_items = str }, restr) topl =
     | [ { str_desc = Tstr_eval expr } ] when topl ->
         assert (size = 0);
         subst_lambda !transl_store_subst (transl_exp expr)
-    | str -> transl_store_structure module_id map prims str in
+    | str -> transl_store_structure module_id (global_path module_id)
+                                    map prims str in
   transl_store_label_init module_id size f str
   (*size, transl_label_init (transl_store_structure module_id map prims str)*)
 
@@ -700,14 +765,19 @@ let transl_toplevel_item item =
       (* we need to use the unique name for the module because of issues
          with "open" (PR#1672) *)
       set_toplevel_unique_name id;
-      transl_and_bind_module Tcoerce_none (Some(Pident id)) id modl
-        (toploop_setvalue_id id)
+      set_toplevel_unique_name (Ident.dynpath id);
+      bind_submodule_dynpath modl.mod_env parent id
+        (Llet(Strict, id,
+              transl_module Tcoerce_none (global_path id) modl,
+              (make_sequence toploop_setvalue_id [id; Ident.dynpath id])))
   | Tstr_recmodule (bindings, parent) ->
       let idents = List.map fst4 bindings in
-      compile_recmodule
-        (fun id modl -> transl_module Tcoerce_none (Some(Pident id)) modl)
+      let all_idents = idents @ List.map Ident.dynpath idents in
+      List.iter set_toplevel_unique_name all_idents;
+      compile_recmodule parent
+        (fun id modl -> transl_module Tcoerce_none (global_path id) modl)
         bindings
-        (make_sequence toploop_setvalue_id idents)
+        (make_sequence toploop_setvalue_id all_idents)
   | Tstr_modtype(id, _, decl) ->
       lambda_unit
   | Tstr_open (path, _) ->

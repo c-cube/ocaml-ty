@@ -210,6 +210,7 @@ let rec item_list env = function
 
 let toplevel_env = ref Env.empty
 let toplevel_path = Ident.create ":toplevel"
+let toplevel_anchor = Env.named_anchor toplevel_path
 
 (* Print an exception produced by an evaluation *)
 
@@ -232,8 +233,9 @@ let execute_phrase print_outcome ppf phr =
   match phr with
   | Ptop_def sstr ->
       let oldenv = !toplevel_env in
+      let anchor = Env.anchor_toplevel_phrase toplevel_anchor in
       Typecore.reset_delayed_checks ();
-      let (str, sg, newenv) = Typemod.type_toplevel_phrase oldenv sstr in
+      let (str, sg, newenv) = Typemod.type_toplevel_phrase anchor oldenv sstr in
       if !Clflags.dump_typedtree then Printtyped.implementation ppf str;
       let sg' = Typemod.simplify_signature sg in
       ignore (Includemod.signatures oldenv sg sg');

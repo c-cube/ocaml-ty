@@ -98,13 +98,17 @@ end  = struct
 
 end
 
+type anchor = {
+  anchor_path: Path.t;
+  anchor_recpath: Path.t option;
+}
 
 type summary =
     Env_empty
   | Env_value of summary * Ident.t * value_description
   | Env_type of summary * Ident.t * type_declaration
   | Env_exception of summary * Ident.t * exception_declaration
-  | Env_module of summary * Ident.t * module_type
+  | Env_module of summary * Ident.t * module_type * anchor option
   | Env_modtype of summary * Ident.t * modtype_declaration
   | Env_class of summary * Ident.t * class_declaration
   | Env_cltype of summary * Ident.t * class_type_declaration
@@ -173,7 +177,8 @@ type t = {
 }
 
 and module_components =
-  (t * Subst.t * Path.t * Types.module_type, module_components_repr) EnvLazy.t
+  (t * Subst.t * Path.t * Types.module_type * anchor option,
+   module_components_repr) EnvLazy.t
 
 and module_components_repr =
     Structure_comps of structure_components
@@ -190,7 +195,8 @@ and structure_components = {
   mutable comp_modtypes: (string, (modtype_declaration * int)) Tbl.t;
   mutable comp_components: (string, (module_components * int)) Tbl.t;
   mutable comp_classes: (string, (class_declaration * int)) Tbl.t;
-  mutable comp_cltypes: (string, (class_type_declaration * int)) Tbl.t
+  mutable comp_cltypes: (string, (class_type_declaration * int)) Tbl.t;
+  comp_anchor: anchor option;
 }
 
 and functor_components = {
@@ -199,7 +205,8 @@ and functor_components = {
   fcomp_res: module_type;               (* Result signature *)
   fcomp_env: t;     (* Environment in which the result signature makes sense *)
   fcomp_subst: Subst.t;  (* Prefixing substitution for the result signature *)
-  fcomp_cache: (Path.t, module_components) Hashtbl.t  (* For memoization *)
+  fcomp_anchor: anchor option;
+  fcomp_cache: (Path.t, module_components) Hashtbl.t; (* For memoization *)
 }
 
 let subst_modtype_maker (subst, mty) = Subst.modtype subst mty
@@ -241,21 +248,37 @@ let diff env1 env2 =
   diff_keys is_local env1.modules env2.modules @
   diff_keys is_local env1.classes env2.classes
 
+(* Anchors creation *)
+
+let named_anchor id =
+  { anchor_path = Pident id;
+    anchor_recpath = None }
+
+let anonymous_anchor () =
+  let id = Ident.create "" in
+  (id, { anchor_path = Pident id;
+         anchor_recpath = None })
+
 (* Forward declarations *)
 
 let components_of_module' =
-  ref ((fun env sub path mty -> assert false) :
-          t -> Subst.t -> Path.t -> module_type -> module_components)
+  ref ((fun env sub path mty anchor -> assert false) :
+         t -> Subst.t -> Path.t -> module_type -> anchor option ->
+           module_components)
 let components_of_module_maker' =
-  ref ((fun (env, sub, path, mty) -> assert false) :
-          t * Subst.t * Path.t * module_type -> module_components_repr)
+  ref ((fun (env, sub, path, mty, anchor) -> assert false) :
+         t * Subst.t * Path.t * module_type * anchor option ->
+           module_components_repr)
 let components_of_functor_appl' =
   ref ((fun f p1 p2 -> assert false) :
-          functor_components -> Path.t -> Path.t -> module_components)
+         functor_components -> Path.t -> Path.t -> module_components)
 let check_modtype_inclusion =
   (* to be filled with Includemod.check_modtype_inclusion *)
   ref ((fun env mty1 path1 mty2 -> assert false) :
           t -> module_type -> Path.t -> module_type -> unit)
+let add_signature' =
+  ref ((fun ?anchor _ _ -> assert false) :
+         ?anchor:anchor -> Types.signature -> t -> t )
 
 (* The name of the compilation unit currently compiled.
    "" if outside a compilation unit. *)
@@ -295,10 +318,14 @@ let read_pers_struct modname filename =
   let sign = cmi.cmi_sign in
   let crcs = cmi.cmi_crcs in
   let flags = cmi.cmi_flags in
+  let id = Ident.create_persistent name in
+  let root = Pident id in
   let comps =
-      !components_of_module' empty Subst.identity
-                             (Pident(Ident.create_persistent name))
-                             (Mty_signature sign) in
+      !components_of_module' empty
+                             Subst.identity
+                             root
+                             (Mty_signature sign)
+                             (Some (named_anchor id)) in
     let ps = { ps_name = name;
                ps_sig = sign;
                ps_comps = comps;
@@ -463,8 +490,8 @@ let find_module path env =
   match path with
     Pident id ->
       begin try
-        let (p, data) = EnvTbl.find_same id env.modules
-        in data
+        let (_, data) = EnvTbl.find_same id env.modules in
+        data
       with Not_found ->
         if Ident.persistent id then
           let ps = find_pers_struct (Ident.name id) in
@@ -483,6 +510,18 @@ let find_module path env =
       end
   | Papply(p1, p2) ->
       raise Not_found (* not right *)
+
+let find_module_anchor p env =
+  match
+    EnvLazy.force !components_of_module_maker' (find_module_descr p env)
+  with
+  | Structure_comps c -> c.comp_anchor
+  | Functor_comps f -> f.fcomp_anchor
+
+let find_module_dynid p env =
+  match find_module_anchor p env with
+  | Some anchor -> anchor.anchor_path
+  | None -> invalid_arg "Env.find_module_dynid"
 
 (* Lookup by name *)
 
@@ -963,6 +1002,69 @@ let prefix_idents_and_subst root sub sg =
   else
     prefix_idents_and_subst root sub sg
 
+(* Anchors: hook used in Typemod.type_module *)
+
+let anchor_structure = function
+  (* entering Pmod_structure *)
+  | None ->
+      let (id, anchor) = anonymous_anchor () in
+      (Some id, anchor)
+  | Some anchor ->
+      (None, anchor)
+
+let anchor_functor param anchor =
+  (* entering Pmod_functor *)
+  (* or entering Env.components_of_functor_appl' *)
+  { anchor_path = Papply(anchor.anchor_path, param);
+    anchor_recpath = None }
+
+let anchor_constraint anchor =
+  (* entering Pmod_constraint *)
+  let id = Ident.create "" in
+  let parent = may_map (fun anchor -> anchor.anchor_path) anchor in
+  let anchor_recpath =
+    match anchor with
+    | None -> None
+    | Some anchor -> anchor.anchor_recpath in
+  let anchor =
+    { anchor_path = Pident id;
+      anchor_recpath } in
+  (id, anchor, parent)
+
+(* Dynamic context 'traversal': hook used in Typemod.type_structure *)
+
+let anchor_subcomponents id pos anchor =
+  (* entering Sig_module in Env.components_of_module_maker *)
+  let name = Ident.name id in
+  { anchor_path = Pdot(anchor.anchor_path, name, pos);
+    anchor_recpath = None }
+
+let anchor_submodule id anchor =
+  (* entering Pstr_module in Typemod_type_structure *)
+  let name = Ident.name id in
+  { anchor_path = Pident id;
+    anchor_recpath =
+      may_map (fun p -> Pdot(p, name, nopos)) anchor.anchor_recpath }
+
+let anchor_toplevel_phrase anchor =
+  let name = "phrase" ^ string_of_int (Ident.current_time ()) in
+  { anchor with
+    anchor_path = Pdot(anchor.anchor_path, name, nopos) }
+
+let anchor_recsubmodule env id mty anchor =
+  (* entering a binding from Pstr_recmodule *)
+  let name = Ident.name id in
+  let dynpath_id = Ident.create name in
+  let new_anchor =
+    { anchor_path = Pident dynpath_id;
+      anchor_recpath = Some (Pident id) } in
+  (dynpath_id, new_anchor, Pident id)
+
+(* Querying dynamic context *)
+
+let recpath a = a.anchor_recpath
+let anchor a = a.anchor_path
+
 (* Compute structure descriptions *)
 
 let add_to_tbl id decl tbl =
@@ -970,10 +1072,10 @@ let add_to_tbl id decl tbl =
     try Tbl.find id tbl with Not_found -> [] in
   Tbl.add id (decl :: decls) tbl
 
-let rec components_of_module env sub path mty =
-  EnvLazy.create (env, sub, path, mty)
+let rec components_of_module env sub path mty anchor =
+  EnvLazy.create (env, sub, path, mty, anchor)
 
-and components_of_module_maker (env, sub, path, mty) =
+and components_of_module_maker (env, sub, path, mty, anchor) =
   (match scrape_modtype mty env with
     Mty_signature sg ->
       let c =
@@ -982,7 +1084,8 @@ and components_of_module_maker (env, sub, path, mty) =
           comp_labels = Tbl.empty; comp_types = Tbl.empty;
           comp_modules = Tbl.empty; comp_modtypes = Tbl.empty;
           comp_components = Tbl.empty; comp_classes = Tbl.empty;
-          comp_cltypes = Tbl.empty } in
+          comp_cltypes = Tbl.empty;
+          comp_anchor = anchor } in
       let pl, sub, _ = prefix_idents_and_subst path sub sg in
       let env = ref env in
       let pos = ref 0 in
@@ -1025,10 +1128,13 @@ and components_of_module_maker (env, sub, path, mty) =
             let mty' = EnvLazy.create (sub, mty) in
             c.comp_modules <-
               Tbl.add (Ident.name id) (mty', !pos) c.comp_modules;
-            let comps = components_of_module !env sub path mty in
+            let anchor =
+              may_map (anchor_subcomponents id !pos) anchor in
+            let comps =
+              components_of_module !env sub path mty anchor in
             c.comp_components <-
               Tbl.add (Ident.name id) (comps, !pos) c.comp_components;
-            env := store_module id path mty !env;
+            env := store_module ?anchor id path mty !env;
             incr pos
         | Sig_modtype(id, decl) ->
             let decl' = Subst.modtype_declaration sub decl in
@@ -1056,6 +1162,7 @@ and components_of_module_maker (env, sub, path, mty) =
           fcomp_res = ty_res;
           fcomp_env = env;
           fcomp_subst = sub;
+          fcomp_anchor = anchor;
           fcomp_cache = Hashtbl.create 17 }
   | Mty_ident p ->
         Structure_comps {
@@ -1065,7 +1172,8 @@ and components_of_module_maker (env, sub, path, mty) =
           comp_types = Tbl.empty;
           comp_modules = Tbl.empty; comp_modtypes = Tbl.empty;
           comp_components = Tbl.empty; comp_classes = Tbl.empty;
-          comp_cltypes = Tbl.empty })
+          comp_cltypes = Tbl.empty;
+          comp_anchor = anchor })
 
 (* Insertion of bindings by identifier + path *)
 
@@ -1165,13 +1273,14 @@ and store_exception id path decl env =
     constrs = EnvTbl.add id (Datarepr.exception_descr path decl) env.constrs;
     summary = Env_exception(env.summary, id, decl) }
 
-and store_module id path mty env =
+and store_module ?anchor id path mty env =
   { env with
     modules = EnvTbl.add id (path, mty) env.modules;
     components =
-      EnvTbl.add id (path, components_of_module env Subst.identity path mty)
-                   env.components;
-    summary = Env_module(env.summary, id, mty) }
+      EnvTbl.add id
+                 (path, components_of_module env Subst.identity path mty anchor)
+                 env.components;
+    summary = Env_module(env.summary, id, mty, anchor) }
 
 and store_modtype id path info env =
   { env with
@@ -1195,10 +1304,11 @@ let components_of_functor_appl f p1 p2 =
     Hashtbl.find f.fcomp_cache p2
   with Not_found ->
     let p = Papply(p1, p2) in
-    let mty =
-      Subst.modtype (Subst.add_module f.fcomp_param p2 Subst.identity)
-                    f.fcomp_res in
-    let comps = components_of_module f.fcomp_env f.fcomp_subst p mty in
+    let subst = Subst.add_module f.fcomp_param p2 Subst.identity in
+    let mty = Subst.modtype subst f.fcomp_res in
+    let anchor = may_map (anchor_functor p2) f.fcomp_anchor in
+    let comps = components_of_module f.fcomp_env f.fcomp_subst p mty
+                                     anchor in
     Hashtbl.add f.fcomp_cache p2 comps;
     comps
 
@@ -1220,8 +1330,8 @@ let add_type id info env =
 and add_exception id decl env =
   store_exception id (Pident id) decl env
 
-and add_module id mty env =
-  store_module id (Pident id) mty env
+and add_module ?anchor id mty env =
+  store_module ?anchor id (Pident id) mty env
 
 and add_modtype id info env =
   store_modtype id (Pident id) info env
@@ -1249,7 +1359,7 @@ let enter store_fun name data env =
 let enter_value ?check = enter (store_value ?check)
 and enter_type = enter store_type
 and enter_exception = enter store_exception
-and enter_module = enter store_module
+and enter_module ?anchor = enter (store_module ?anchor)
 and enter_modtype = enter store_modtype
 and enter_class = enter store_class
 and enter_cltype = enter store_cltype
@@ -1266,10 +1376,37 @@ let add_item comp env =
   | Sig_class(id, decl, _)  -> add_class id decl env
   | Sig_class_type(id, decl, _) -> add_cltype id decl env
 
-let rec add_signature sg env =
-  match sg with
-    [] -> env
-  | comp :: rem -> add_signature rem (add_item comp env)
+let next_pos item pos =
+  match item with
+  | Sig_value (_, { val_kind = Val_prim _ })
+  | Sig_type _
+  | Sig_modtype _
+  | Sig_class_type _ -> pos
+  | Sig_value _
+  | Sig_exception _
+  | Sig_module _
+  | Sig_class _ -> pos+1
+
+let add_signature ?anchor sg env =
+  let (newenv, _) =
+    List.fold_left
+      (fun (env, pos) item ->
+        let newenv =
+          match item with
+          | Sig_value(id, decl) -> add_value id decl env
+          | Sig_type(id, decl, _) -> add_type id decl env
+          | Sig_exception(id, decl) -> add_exception id decl env
+          | Sig_module(id, mty, _) -> add_module ?anchor id mty env
+          | Sig_modtype(id, decl) -> add_modtype id decl env
+          | Sig_class(id, decl, _) -> add_class id decl env
+          | Sig_class_type(id, decl, _) -> add_cltype id decl env
+        in
+        (newenv, next_pos item pos))
+      (env, 0) sg in
+  newenv
+
+let () =
+  add_signature' := add_signature
 
 (* Open a signature path *)
 
@@ -1277,29 +1414,32 @@ let open_signature root sg env =
   (* First build the paths and substitution *)
   let (pl, sub, sg) = prefix_idents_and_subst root Subst.identity sg in
   let sg = Lazy.force sg in
+  let anchor = find_module_anchor root env in
 
   (* Then enter the components in the environment after substitution *)
 
-  let newenv =
+  let (newenv, _) =
     List.fold_left2
-      (fun env item p ->
-        match item with
-          Sig_value(id, decl) ->
-            store_value (Ident.hide id) p decl env
-        | Sig_type(id, decl, _) ->
-            store_type (Ident.hide id) p decl env
-        | Sig_exception(id, decl) ->
-            store_exception (Ident.hide id) p decl env
-        | Sig_module(id, mty, _) ->
-            store_module (Ident.hide id) p mty env
-        | Sig_modtype(id, decl) ->
-            store_modtype (Ident.hide id) p decl env
-        | Sig_class(id, decl, _) ->
-            store_class (Ident.hide id) p decl env
-        | Sig_class_type(id, decl, _) ->
-            store_cltype (Ident.hide id) p decl env
-      )
-      env sg pl in
+      (fun (env, pos) item p ->
+        let newenv =
+          match item with
+            Sig_value(id, decl) ->
+              store_value (Ident.hide id) p decl env
+          | Sig_type(id, decl, _) ->
+              store_type (Ident.hide id) p decl env
+          | Sig_exception(id, decl) ->
+              store_exception (Ident.hide id) p decl env
+          | Sig_module(id, mty, _) ->
+              let anchor = may_map (anchor_subcomponents id pos) anchor in
+              store_module ?anchor (Ident.hide id) p mty env
+          | Sig_modtype(id, decl) ->
+              store_modtype (Ident.hide id) p decl env
+          | Sig_class(id, decl, _) ->
+              store_class (Ident.hide id) p decl env
+          | Sig_class_type(id, decl, _) ->
+              store_cltype (Ident.hide id) p decl env in
+        (newenv, next_pos item pos))
+      (env, 0) sg pl in
   { newenv with summary = Env_open(env.summary, root) }
 
 (* Open a signature from a file *)
@@ -1358,9 +1498,11 @@ let save_signature_with_imports sg modname filename imports =
     close_out oc;
     (* Enter signature in persistent table so that imported_unit()
        will also return its crc *)
+    let modid = Ident.create_persistent modname in
     let comps =
       components_of_module empty Subst.identity
-        (Pident(Ident.create_persistent modname)) (Mty_signature sg) in
+                           (Pident modid) (Mty_signature sg)
+                           (Some (named_anchor modid)) in
     let ps =
       { ps_name = modname;
         ps_sig = sg;
