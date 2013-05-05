@@ -475,7 +475,7 @@ and transl_signature env sg =
             mksig (Tsig_type decls) env loc :: trem,
             map_rec'' (fun rs (id, _, info) ->
               (* FIXME GRGR transp *)
-                Sig_type(id, info.typ_type, rs, Default)) decls rem,
+              Sig_type(id, info.typ_type, rs, Default)) decls rem,
             final_env
         | Psig_exception(name, sarg) ->
             let arg = Typedecl.transl_exception env item.psig_loc sarg in
@@ -761,6 +761,7 @@ let check_recmodule_inclusion env bindings =
         and mty_actual' = subst_and_strengthen env s id mty_actual in
         let coercion =
           try
+            (* FIXME GRGR transp Includemod *)
             Includemod.modtypes env mty_actual' mty_decl'
           with Includemod.Error msg ->
             raise(Error(modl.mod_loc, env, Not_included msg)) in
@@ -816,10 +817,19 @@ let modtype_of_package env loc p nl tl =
     let error = Typetexp.Unbound_modtype (Ctype.lid_of_path p) in
     raise(Typetexp.Error(loc, env, error))
 
+let transparency_context env arg =
+  try Some (env, Some (path_of_module arg))
+  with Not_a_path ->
+    match arg.mod_desc with
+    | Tmod_structure ({ str_final_env = env },_) -> Some (env, None)
+          (* FIXME GRGR... Tmod_constraint ??? *)
+    | _ -> None
+
 let wrap_constraint env arg mty explicit =
+  let context = transparency_context env arg in
   let coercion =
     try
-      Includemod.modtypes env arg.mod_type mty
+      Includemod.modtypes ?context env arg.mod_type mty
     with Includemod.Error msg ->
       raise(Error(arg.mod_loc, env, Not_included msg)) in
   { mod_desc = Tmod_constraint(arg, mty, explicit, coercion);
@@ -866,7 +876,8 @@ let rec type_module sttn funct_body anchor env smod =
         Mty_functor(param, mty_param, mty_res) as mty_functor ->
           let coercion =
             try
-              Includemod.modtypes env arg.mod_type mty_param
+              let context = transparency_context env arg in
+              Includemod.modtypes ?context env arg.mod_type mty_param
             with Includemod.Error msg ->
               raise(Error(sarg.pmod_loc, env, Not_included msg)) in
           let mty_appl =
@@ -1306,6 +1317,7 @@ let type_implementation sourcefile outputprefix modulename initial_env ast =
         (* result is ignored by Compile.implementation *)
         (None, str, Tcoerce_none)
       end else begin
+        (* FIXME GRGR transp Includemod *)
         let coercion = Includemod.compunit sourcefile sg intf_file dclsig in
         Typecore.force_delayed_checks ();
         (* It is important to run these checks after the inclusion test above,
@@ -1329,6 +1341,7 @@ let type_implementation sourcefile outputprefix modulename initial_env ast =
         check_nongen_schemes finalenv str.str_items;
         normalize_signature finalenv simple_sg;
         let coercion =
+          (* FIXME GRGR transp Includemod *)
           Includemod.compunit sourcefile sg
             "(inferred signature)" simple_sg in
         Typecore.force_delayed_checks ();
@@ -1399,6 +1412,7 @@ let package_units objfiles cmifile modulename =
     let dclsig = Env.read_signature modulename cmifile in
     Cmt_format.save_cmt  (prefix ^ ".cmt") modulename
       (Cmt_format.Packed (sg, objfiles)) None Env.initial None ;
+    (* FIXME GRGR transp Includemod *)
     Includemod.compunit "(obtained by packing)" sg mlifile dclsig
   end else begin
     (* Determine imports *)

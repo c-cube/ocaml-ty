@@ -961,10 +961,11 @@ let rec prefix_idents root pos sub = function
       let nextpos = match decl.val_kind with Val_prim _ -> pos | _ -> pos+1 in
       let (pl, final_sub) = prefix_idents root nextpos sub rem in
       (p::pl, final_sub)
-  | Sig_type(id, decl, _, _) :: rem ->
-      let p = Pdot(root, Ident.name id, nopos) in
+  | Sig_type(id, decl, _, shadow) :: rem ->
+      let p = Pdot(root, Ident.name id, pos) in
+      let nextpos = match shadow with Default -> pos | Transparent -> pos+1 in
       let (pl, final_sub) =
-        prefix_idents root pos (Subst.add_type id p sub) rem in
+        prefix_idents root nextpos (Subst.add_type id p sub) rem in
       (p::pl, final_sub)
   | Sig_exception(id, decl) :: rem ->
       let p = Pdot(root, Ident.name id, pos) in
@@ -1172,17 +1173,20 @@ let anchor_type anchor id =
   Anchored (Pdot(anchor.anchor_path, name, nopos), anchor.anchor_struct,
             external_type name anchor.anchor_external)
 
-let type_dynid anchor dynamic pos id =
+let type_dynid anchor dynamic shadow pos id =
   match anchor with
   | None ->
       assert (not dynamic);
       Non_anchored
   | Some anchor ->
-      if dynamic then
-        (* GRGR TODO transparent type *)
-        Non_anchored
-      else
-        anchor_type anchor id
+      match shadow with
+      | Default ->
+          if dynamic then
+            Non_anchored
+          else
+            anchor_type anchor id
+      | Transparent ->
+          Dynamic (Pdot(anchor.anchor_path, Ident.name id, pos))
 
 (* Compute structure descriptions *)
 
@@ -1217,12 +1221,12 @@ and components_of_module_maker (env, sub, path, mty, anchor, dynamic) =
             begin match decl.val_kind with
               Val_prim _ -> () | _ -> incr pos
             end
-        | Sig_type(id, decl, _, _) ->
-            (* FIXME GRGR transp *)
+        | Sig_type(id, decl, _, shadow) ->
             let decl' = Subst.type_declaration sub decl in
             let constructors = List.map snd (constructors_of_type path decl') in
             let labels = List.map snd (labels_of_type path decl') in
-            let dynid = type_dynid anchor dynamic pos id in
+            let dynid = type_dynid anchor dynamic shadow !pos id in
+            if shadow = Transparent then incr pos;
             c.comp_types <-
               Tbl.add (Ident.name id)
                 ((decl', (constructors, labels), dynid), nopos)
@@ -1497,7 +1501,6 @@ and enter_cltype = enter store_cltype
 let add_item comp env =
   match comp with
     Sig_value(id, decl)       -> add_value id decl env
-        (* FIXME GRGR transp *)
   | Sig_type(id, decl, _, _)  -> add_type id decl env
   | Sig_exception(id, decl)   -> add_exception id decl env
   | Sig_module(id, mty, _, _) -> add_module id mty env
@@ -1508,10 +1511,11 @@ let add_item comp env =
 let next_pos item pos =
   match item with
   | Sig_value (_, { val_kind = Val_prim _ })
-  | Sig_type _
+  | Sig_type (_, _, _, Default)
   | Sig_modtype _
   | Sig_class_type _ -> pos
   | Sig_value _
+  | Sig_type (_, _, _, Transparent)
   | Sig_exception _
   | Sig_module _
   | Sig_class _ -> pos+1
@@ -1523,9 +1527,8 @@ let add_signature ?anchor sg env =
         let newenv =
           match item with
           | Sig_value(id, decl) -> add_value id decl env
-          | Sig_type(id, decl, _, _) ->
-              (* FIXME GRGR transp *)
-              let dynid = type_dynid anchor false pos id in
+          | Sig_type(id, decl, _, ss) ->
+              let dynid = type_dynid anchor false ss pos id in
               add_type ~dynid id decl env
           | Sig_exception(id, decl) -> add_exception id decl env
           | Sig_module(id, mty, _, _) -> add_module ?anchor id mty env
@@ -1557,9 +1560,8 @@ let open_signature root sg env =
           match item with
             Sig_value(id, decl) ->
               store_value (Ident.hide id) p decl env
-          | Sig_type(id, decl, _, _) ->
-            (* FIXME GRGR transp *)
-              let dynid = type_dynid anchor dynamic pos id in
+          | Sig_type(id, decl, _, ss) ->
+              let dynid = type_dynid anchor dynamic ss pos id in
               store_type ~dynid (Ident.hide id) p decl env
           | Sig_exception(id, decl) ->
               store_exception (Ident.hide id) p decl env

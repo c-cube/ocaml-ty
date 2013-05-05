@@ -35,6 +35,9 @@ let rec apply_coercion restr arg =
   match restr with
     Tcoerce_none ->
       arg
+  | Tcoerce_type (env, path) ->
+      (* FIXME GRGR location *)
+      Transltyrepr.transl_decl env Location.none path
   | Tcoerce_structure pos_cc_list ->
       name_lambda arg (fun id ->
         Lprim(Pmakeblock(0, Immutable),

@@ -185,8 +185,9 @@ and type_paths_sig env p pos sg =
   | Sig_value(id, decl) :: rem ->
       let pos' = match decl.val_kind with Val_prim _ -> pos | _ -> pos + 1 in
       type_paths_sig env p pos' rem
-  | Sig_type(id, decl, _, _) :: rem ->
-      Pdot(p, Ident.name id, nopos) :: type_paths_sig env p pos rem
+  | Sig_type(id, decl, _, shadow) :: rem ->
+      let pos' = match shadow with Default -> pos | Transparent -> pos + 1 in
+      Pdot(p, Ident.name id, pos) :: type_paths_sig env p pos' rem
   | Sig_module(id, mty, _, _) :: rem ->
       type_paths env (Pdot(p, Ident.name id, pos)) mty @
       type_paths_sig (Env.add_module id mty env) p (pos+1) rem
@@ -214,7 +215,8 @@ and no_code_needed_sig env sg =
   | Sig_module(id, mty, _, _) :: rem ->
       no_code_needed env mty &&
       no_code_needed_sig (Env.add_module id mty env) rem
-  | (Sig_type _ | Sig_modtype _ | Sig_class_type _) :: rem ->
+  | Sig_type (_,_,_,Transparent) :: rem -> false
+  | (Sig_type (_,_,_,Default) | Sig_modtype _ | Sig_class_type _) :: rem ->
       no_code_needed_sig env rem
   | (Sig_exception _ | Sig_class _) :: rem ->
       false

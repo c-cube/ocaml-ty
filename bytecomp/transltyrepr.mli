@@ -17,6 +17,8 @@ val transl_expr:
     Env.t -> Location.t ->
     Typedtree.core_type option -> Types.type_expr -> lambda
 
+val transl_decl: Env.t -> Location.t -> Path.t -> lambda
+
 type error
 exception Error of Location.t * Types.type_expr * error
 val report_error: Format.formatter -> Types.type_expr -> error -> unit

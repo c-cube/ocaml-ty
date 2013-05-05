@@ -890,6 +890,17 @@ let transl_expr env loc cty ty =
   with TyReprError e ->
     raise (Error (loc, ty, e))
 
+let transl_decl env loc path =
+  let decl = Env.find_type path env in
+  let ty = Ctype.newty (Tconstr (path, decl.type_params, ref Mnil)) in
+  try
+    let cxt = create_context env loc in
+    mark_path cxt path;
+    let body = transl_path_rec cxt path in
+    build_context cxt body
+  with TyReprError e ->
+    (* FIXME Custom error *)
+    raise (Error (loc, ty, e))
 
 (** Error reporting *)
 
