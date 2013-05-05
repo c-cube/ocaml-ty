@@ -1402,16 +1402,25 @@ type_declarations:
 ;
 
 type_declaration:
-    optional_type_parameters LIDENT type_kind constraints
-      { let (params, variance) = List.split $1 in
-        let (kind, private_flag, manifest) = $3 in
-        (mkrhs $2 2, {ptype_params = params;
-              ptype_cstrs = List.rev $4;
+    optional_attributes optional_type_parameters LIDENT type_kind constraints
+      { let (params, variance) = List.split $2 in
+        let (kind, private_flag, manifest) = $4 in
+        (mkrhs $3 3, {ptype_params = params;
+              ptype_cstrs = List.rev $5;
               ptype_kind = kind;
               ptype_private = private_flag;
               ptype_manifest = manifest;
               ptype_variance = variance;
+              ptype_attributes = $1;
               ptype_loc = symbol_rloc() }) }
+;
+optional_attributes:
+    { [] }
+  | LESS optional_attributes_list GREATER { $2 }
+;
+optional_attributes_list:
+    LIDENT { [mkrhs $1 1] }
+  | LIDENT COMMA optional_attributes_list { mkrhs $1 1 :: $3 }
 ;
 constraints:
         constraints CONSTRAINT constrain        { $3 :: $1 }
@@ -1521,6 +1530,7 @@ with_constraint:
                      ptype_manifest = Some $5;
                      ptype_private = $4;
                      ptype_variance = variance;
+                     ptype_attributes = [];
                      ptype_loc = symbol_rloc()}) }
     /* used label_longident instead of type_longident to disallow
        functor applications in type path */
@@ -1533,6 +1543,7 @@ with_constraint:
                            ptype_manifest = Some $5;
                            ptype_private = Public;
                            ptype_variance = variance;
+                           ptype_attributes = [];
                            ptype_loc = symbol_rloc()}) }
   | MODULE mod_longident EQUAL mod_ext_longident
       { (mkrhs $2 2, Pwith_module (mkrhs $4 4)) }

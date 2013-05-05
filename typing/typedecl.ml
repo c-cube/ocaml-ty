@@ -223,6 +223,16 @@ let transl_declaration env (name, sdecl) id =
         let cty = transl_simple_type env no_row sty in
         Some cty, Some cty.ctyp_type
     in
+    List.iter
+      (fun s -> if s.txt <> "transparent" then
+        (* FIXME GRGR *)
+        failwith "Unknown attribute (TODO errmsg)")
+      sdecl.ptype_attributes;
+    let shadow =
+      if List.exists (fun s -> s.txt = "transparent") sdecl.ptype_attributes then
+        Transparent
+      else
+        Default in
     let decl =
       { type_params = params;
         type_arity = List.length params;
@@ -264,6 +274,8 @@ let transl_declaration env (name, sdecl) id =
       typ_manifest = tman;
       typ_kind = tkind;
       typ_variance = sdecl.ptype_variance;
+      typ_attributes = sdecl.ptype_attributes;
+      typ_shadow = shadow;
       typ_private = sdecl.ptype_private;
     } in
     (id, name, tdecl)
@@ -1001,6 +1013,8 @@ let transl_with_constraint env id row_path orig_decl sdecl =
     typ_manifest = tman;
     typ_kind = Ttype_abstract;
     typ_variance = sdecl.ptype_variance;
+    typ_attributes = sdecl.ptype_attributes;
+    typ_shadow = Default;
     typ_private = sdecl.ptype_private;
   }
 

@@ -385,10 +385,9 @@ and print_out_sig_item ppf =
                      | Orec_next -> "and")
         name !out_module_type mty
   | Osig_type(td, rs, ss) ->
-        (* FIXME GRGR transp *)
         print_out_type_decl
           (if rs = Orec_next then "and" else "type")
-          ppf td
+          ppf td ss
   | Osig_value (name, ty, prims) ->
       let kwd = if prims = [] then "val" else "external" in
       let pr_prims ppf =
@@ -401,7 +400,7 @@ and print_out_sig_item ppf =
       fprintf ppf "@[<2>%s %a :@ %a%a@]" kwd value_ident name !out_type
         ty pr_prims prims
 
-and print_out_type_decl kwd ppf (name, args, ty, priv, constraints) =
+and print_out_type_decl kwd ppf (name, args, ty, priv, constraints) ss =
   let print_constraints ppf params =
     List.iter
       (fun (ty1, ty2) ->
@@ -422,8 +421,13 @@ and print_out_type_decl kwd ppf (name, args, ty, priv, constraints) =
       Otyp_manifest (ty, _) -> fprintf ppf " =@ %a" !out_type ty
     | _ -> ()
   in
+  let attributes ppf =
+    match ss with
+    | Oshadow_default -> ()
+    | Oshadow_transparent -> fprintf ppf "<transparent> "
+  in
   let print_name_args ppf =
-    fprintf ppf "%s %t%a" kwd type_defined print_manifest ty
+    fprintf ppf "%s %t%t%a" kwd attributes type_defined print_manifest ty
   in
   let ty =
     match ty with

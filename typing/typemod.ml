@@ -474,8 +474,7 @@ and transl_signature env sg =
             let (trem, rem, final_env) = transl_sig newenv srem in
             mksig (Tsig_type decls) env loc :: trem,
             map_rec'' (fun rs (id, _, info) ->
-              (* FIXME GRGR transp *)
-              Sig_type(id, info.typ_type, rs, Default)) decls rem,
+              Sig_type(id, info.typ_type, rs, info.typ_shadow)) decls rem,
             final_env
         | Psig_exception(name, sarg) ->
             let arg = Typedecl.transl_exception env item.psig_loc sarg in

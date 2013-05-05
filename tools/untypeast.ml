@@ -119,6 +119,7 @@ and untype_type_declaration decl =
     ptype_manifest = (match decl.typ_manifest with
         None -> None
       | Some ct -> Some (untype_core_type ct));
+    ptype_attributes = decl.typ_attributes;
     ptype_variance = decl.typ_variance;
     ptype_loc = decl.typ_loc;
   }

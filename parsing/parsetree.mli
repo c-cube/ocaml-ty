@@ -138,6 +138,7 @@ and type_declaration =
     ptype_private: private_flag;
     ptype_manifest: core_type option;
     ptype_variance: (bool * bool) list;
+    ptype_attributes: string loc list;
     ptype_loc: Location.t }
 
 and type_kind =

@@ -143,6 +143,7 @@ let create_package_mty fake loc env (p, l) =
                ptype_private = Asttypes.Public;
                ptype_manifest = if fake then None else Some t;
                ptype_variance = [];
+               ptype_attributes = [];
                ptype_loc = loc} in
       {pmty_desc=Pmty_with (mty, [ { txt = s.txt; loc }, Pwith_type d ]);
        pmty_loc=loc}

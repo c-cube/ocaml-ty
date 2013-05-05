@@ -312,6 +312,8 @@ and type_declaration =
     typ_private: private_flag;
     typ_manifest: core_type option;
     typ_variance: (bool * bool) list;
+    typ_attributes: string loc list;
+    typ_shadow: shadow_status;
     typ_loc: Location.t }
 
 and type_kind =
