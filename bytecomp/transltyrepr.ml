@@ -440,7 +440,9 @@ and transl_decl_rec cxt path =
   match Env.find_type_dynid path cxt.env with
   | Env.Non_anchored -> raise(TyReprError (Unanchored_type path))
   | Env.Newtype _ -> assert false (* cf. transl_expr_rec or transl_core_expr *)
-  | Env.Dynamic _ -> assert false (* TODO GRGR *)
+  | Env.Dynamic path ->
+      (* FIXME GRGR functor application ??? *)
+      transl_path path
   | Env.Anchored (dynid, _, ext_decl) ->
       let (filename, beg_char, end_char) =
         Location.get_pos_info decl.type_loc.Location.loc_start in
