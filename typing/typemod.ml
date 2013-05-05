@@ -83,7 +83,7 @@ let type_module_type_of_fwd :
 (* Merge one "with" constraint in a signature *)
 
 let rec add_rec_types env = function
-    Sig_type(id, decl, Trec_next) :: rem ->
+    Sig_type(id, decl, Trec_next, _) :: rem ->
       add_rec_types (Env.add_type id decl env) rem
   | _ -> env
 
@@ -103,8 +103,8 @@ let wrap_param s = {ptyp_desc=Ptyp_var s; ptyp_loc=Location.none}
 let make_next_first rs rem =
   if rs = Trec_first then
     match rem with
-      Sig_type (id, decl, Trec_next) :: rem ->
-        Sig_type (id, decl, Trec_first) :: rem
+      Sig_type (id, decl, Trec_next, ss) :: rem ->
+        Sig_type (id, decl, Trec_first, ss) :: rem
     | Sig_module (id, mty, Trec_next, d) :: rem ->
         Sig_module (id, mty, Trec_first, d) :: rem
     | _ -> rem
@@ -120,7 +120,7 @@ let merge_constraint initial_env loc  sg lid constr =
     match (sg, namelist, constr) with
       ([], _, _) ->
         raise(Error(loc, env, With_no_component lid.txt))
-    | (Sig_type(id, decl, rs) :: rem, [s],
+    | (Sig_type(id, decl, rs, ss) :: rem, [s],
        Pwith_type ({ptype_kind = Ptype_abstract} as sdecl))
       when Ident.name id = s && Typedecl.is_fixed_type sdecl ->
         let decl_row =
@@ -144,18 +144,19 @@ let merge_constraint initial_env loc  sg lid constr =
         let decl_row = {decl_row with type_params = newdecl.type_params} in
         let rs' = if rs = Trec_first then Trec_not else rs in
         (Pident id, lid, Twith_type tdecl),
-        Sig_type(id_row, decl_row, rs') :: Sig_type(id, newdecl, rs) :: rem
-    | (Sig_type(id, decl, rs) :: rem , [s], Pwith_type sdecl)
+        Sig_type(id_row, decl_row, rs', Default) ::
+        Sig_type(id, newdecl, rs, ss) :: rem
+    | (Sig_type(id, decl, rs, ss) :: rem , [s], Pwith_type sdecl)
       when Ident.name id = s ->
         let tdecl =
           Typedecl.transl_with_constraint initial_env id None decl sdecl in
         let newdecl = tdecl.typ_type in
         check_type_decl env id row_id newdecl decl rs rem;
-        (Pident id, lid, Twith_type tdecl), Sig_type(id, newdecl, rs) :: rem
-    | (Sig_type(id, decl, rs) :: rem, [s], (Pwith_type _ | Pwith_typesubst _))
+        (Pident id, lid, Twith_type tdecl), Sig_type(id, newdecl, rs, ss) :: rem
+    | (Sig_type(id, decl, rs, ss) :: rem, [s], (Pwith_type _ | Pwith_typesubst _))
       when Ident.name id = s ^ "#row" ->
         merge env rem namelist (Some id)
-    | (Sig_type(id, decl, rs) :: rem, [s], Pwith_typesubst sdecl)
+    | (Sig_type(id, decl, rs, ss) :: rem, [s], Pwith_typesubst sdecl)
       when Ident.name id = s ->
         (* Check as for a normal with constraint, but discard definition *)
         let tdecl =
@@ -290,7 +291,8 @@ and approx_sig env ssg =
       | Psig_type sdecls ->
           let decls = Typedecl.approx_type_decl env sdecls in
           let rem = approx_sig env srem in
-          map_rec' (fun rs (id, info) -> Sig_type(id, info, rs)) decls rem
+          (* FIXME GRGR transp *)
+          map_rec' (fun rs (id, info) -> Sig_type(id, info, rs, Default)) decls rem
       | Psig_module(name, smty) ->
           let mty = approx_modtype env smty in
           let (id, newenv) = Env.enter_module name.txt mty env in
@@ -326,8 +328,9 @@ and approx_sig env ssg =
             (map_rec
               (fun rs (i1, _, d1, i2, d2, i3, d3, _) ->
                 [Sig_class_type(i1, d1, rs);
-                 Sig_type(i2, d2, rs);
-                 Sig_type(i3, d3, rs)])
+                 (* FIXME GRGR transp *)
+                 Sig_type(i2, d2, rs, Default);
+                 Sig_type(i3, d3, rs, Default)])
               decls [rem])
       | _ ->
           approx_sig env srem
@@ -365,7 +368,7 @@ let check cl loc set_ref name =
   else set_ref := StringSet.add name !set_ref
 
 let check_sig_item type_names module_names modtype_names loc = function
-    Sig_type(id, _, _) ->
+    Sig_type(id, _, _, _) ->
       check "type" loc type_names (Ident.name id)
   | Sig_module(id, _, _, _) ->
       check "module" loc module_names (Ident.name id)
@@ -471,7 +474,8 @@ and transl_signature env sg =
             let (trem, rem, final_env) = transl_sig newenv srem in
             mksig (Tsig_type decls) env loc :: trem,
             map_rec'' (fun rs (id, _, info) ->
-                Sig_type(id, info.typ_type, rs)) decls rem,
+              (* FIXME GRGR transp *)
+                Sig_type(id, info.typ_type, rs, Default)) decls rem,
             final_env
         | Psig_exception(name, sarg) ->
             let arg = Typedecl.transl_exception env item.psig_loc sarg in
@@ -546,8 +550,9 @@ and transl_signature env sg =
                  (fun rs (i, _, d, i', d', i'', d'', i''', d''', _, _, _) ->
                    [Sig_class(i, d, rs);
                     Sig_class_type(i', d', rs);
-                    Sig_type(i'', d'', rs);
-                    Sig_type(i''', d''', rs)])
+                    (* FIXME GRGR transp *)
+                    Sig_type(i'', d'', rs, Default);
+                    Sig_type(i''', d''', rs, Default)])
                  classes [rem]),
             final_env
         | Psig_class_type cl ->
@@ -565,8 +570,9 @@ and transl_signature env sg =
               (map_rec
                  (fun rs (i, _, d, i', d', i'', d'', _) ->
                    [Sig_class_type(i, d, rs);
-                    Sig_type(i', d', rs);
-                    Sig_type(i'', d'', rs)])
+                    (* FIXME GRGR transp *)
+                    Sig_type(i', d', rs, Default);
+                    Sig_type(i'', d'', rs, Default)])
                  classes [rem]),
             final_env
   in
@@ -779,10 +785,11 @@ let rec package_constraints env loc mty constrs =
   let sg' =
     List.map
       (function
-        | Sig_type (id, ({type_params=[]} as td), rs)
+        | Sig_type (id, ({type_params=[]} as td), rs, ss)
           when List.mem_assoc [Ident.name id] constrs ->
             let ty = List.assoc [Ident.name id] constrs in
-            Sig_type (id, {td with type_manifest = Some ty}, rs)
+            (* FIXME GRGR transp *)
+            Sig_type (id, {td with type_manifest = Some ty}, rs, ss)
         | Sig_module (id, mty, rs, d) ->
             let rec aux = function
               | (m :: ((_ :: _) as l), t) :: rest when m = Ident.name id ->
@@ -988,7 +995,8 @@ and type_structure ?(toplevel = false) funct_body anchor env sstr scope =
           enrich_type_decls anchor decls env newenv in
         let (str_rem, sig_rem, final_env) = type_struct newenv' srem in
         (item :: str_rem,
-         map_rec'' (fun rs (id, _, info) -> Sig_type(id, info.typ_type, rs))
+         (* FIXME GRGR transp *)
+         map_rec'' (fun rs (id, _, info) -> Sig_type(id, info.typ_type, rs, Default))
            decls sig_rem,
          final_env)
     | Pstr_exception(name, sarg) ->
@@ -1089,8 +1097,9 @@ and type_structure ?(toplevel = false) funct_body anchor env sstr scope =
               (fun rs (i, _, d, i', d', i'', d'', i''', d''', _, _, _) ->
                 [Sig_class(i, d, rs);
                  Sig_class_type(i', d', rs);
-                 Sig_type(i'', d'', rs);
-                 Sig_type(i''', d''', rs)])
+                 (* FIXME GRGR transp *)
+                 Sig_type(i'', d'', rs, Default);
+                 Sig_type(i''', d''', rs, Default)])
               classes [sig_rem]),
          final_env)
     | Pstr_class_type cl ->
@@ -1115,8 +1124,9 @@ and type_structure ?(toplevel = false) funct_body anchor env sstr scope =
            (map_rec
               (fun rs (i, _, d, i', d', i'', d'', _) ->
                  [Sig_class_type(i, d, rs);
-                  Sig_type(i', d', rs);
-                  Sig_type(i'', d'', rs)])
+                  (* FIXME GRGR transp *)
+                  Sig_type(i', d', rs, Default);
+                  Sig_type(i'', d'', rs, Default)])
               classes [sig_rem]),
          final_env)
     | Pstr_include smodl ->
@@ -1218,7 +1228,7 @@ let type_module_type_of env smod =
 
 let rec get_manifest_types = function
     [] -> []
-  | Sig_type (id, {type_params=[]; type_manifest=Some ty}, _) :: rem ->
+  | Sig_type (id, {type_params=[]; type_manifest=Some ty}, _, _) :: rem ->
       (Ident.name id, ty) :: get_manifest_types rem
   | _ :: rem -> get_manifest_types rem
 

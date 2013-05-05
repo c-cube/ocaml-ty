@@ -135,7 +135,8 @@ let init_shape modl =
               Const_pointer 1 (* camlinternalMod.Lazy *)
           | _ -> raise Not_found in
         init_v :: init_shape_struct env rem
-    | Sig_type(id, tdecl, _) :: rem ->
+    | Sig_type(id, tdecl, _, _) :: rem ->
+        (* FIXME GRGR transp *)
         init_shape_struct (Env.add_type id tdecl env) rem
     | Sig_exception(id, edecl) :: rem ->
         raise Not_found

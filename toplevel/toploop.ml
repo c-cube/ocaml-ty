@@ -177,10 +177,10 @@ let rec pr_item env = function
             Some v
       in
       Some (tree, valopt, rem)
-  | Sig_type(id, _, _) :: rem when Btype.is_row_name (Ident.name id) ->
+  | Sig_type(id, _, _, _) :: rem when Btype.is_row_name (Ident.name id) ->
       pr_item env rem
-  | Sig_type(id, decl, rs) :: rem ->
-      let tree = Printtyp.tree_of_type_declaration id decl rs in
+  | Sig_type(id, decl, rs, ss) :: rem ->
+      let tree = Printtyp.tree_of_type_declaration id decl rs ss in
       Some (tree, None, rem)
   | Sig_exception(id, decl) :: rem ->
       let tree = Printtyp.tree_of_exception_declaration id decl in

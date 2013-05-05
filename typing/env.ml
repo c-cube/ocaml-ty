@@ -961,7 +961,7 @@ let rec prefix_idents root pos sub = function
       let nextpos = match decl.val_kind with Val_prim _ -> pos | _ -> pos+1 in
       let (pl, final_sub) = prefix_idents root nextpos sub rem in
       (p::pl, final_sub)
-  | Sig_type(id, decl, _) :: rem ->
+  | Sig_type(id, decl, _, _) :: rem ->
       let p = Pdot(root, Ident.name id, nopos) in
       let (pl, final_sub) =
         prefix_idents root pos (Subst.add_type id p sub) rem in
@@ -996,8 +996,8 @@ let subst_signature sub sg =
       match item with
       | Sig_value(id, decl) ->
           Sig_value (id, Subst.value_description sub decl)
-      | Sig_type(id, decl, x) ->
-          Sig_type(id, Subst.type_declaration sub decl, x)
+      | Sig_type(id, decl, x, y) ->
+          Sig_type(id, Subst.type_declaration sub decl, x, y)
       | Sig_exception(id, decl) ->
           Sig_exception (id, Subst.exception_declaration sub decl)
       | Sig_module(id, mty, x, y) ->
@@ -1150,7 +1150,8 @@ let anchor a = a.anchor_path
 let rec find_type_in_sig name items =
   match items with
   | [] -> raise Not_found
-  | Sig_type (id, decl, _) :: _ when Ident.name id = name -> id
+        (* FIXME GRGR transp when signature si transparent *)
+  | Sig_type (id, decl, _, _) :: _ when Ident.name id = name -> id
   | _ :: items -> find_type_in_sig name items
 
 let external_type name ext =
@@ -1216,7 +1217,8 @@ and components_of_module_maker (env, sub, path, mty, anchor, dynamic) =
             begin match decl.val_kind with
               Val_prim _ -> () | _ -> incr pos
             end
-        | Sig_type(id, decl, _) ->
+        | Sig_type(id, decl, _, _) ->
+            (* FIXME GRGR transp *)
             let decl' = Subst.type_declaration sub decl in
             let constructors = List.map snd (constructors_of_type path decl') in
             let labels = List.map snd (labels_of_type path decl') in
@@ -1495,7 +1497,8 @@ and enter_cltype = enter store_cltype
 let add_item comp env =
   match comp with
     Sig_value(id, decl)       -> add_value id decl env
-  | Sig_type(id, decl, _)     -> add_type id decl env
+        (* FIXME GRGR transp *)
+  | Sig_type(id, decl, _, _)  -> add_type id decl env
   | Sig_exception(id, decl)   -> add_exception id decl env
   | Sig_module(id, mty, _, _) -> add_module id mty env
   | Sig_modtype(id, decl)     -> add_modtype id decl env
@@ -1520,7 +1523,8 @@ let add_signature ?anchor sg env =
         let newenv =
           match item with
           | Sig_value(id, decl) -> add_value id decl env
-          | Sig_type(id, decl, _) ->
+          | Sig_type(id, decl, _, _) ->
+              (* FIXME GRGR transp *)
               let dynid = type_dynid anchor false pos id in
               add_type ~dynid id decl env
           | Sig_exception(id, decl) -> add_exception id decl env
@@ -1553,7 +1557,8 @@ let open_signature root sg env =
           match item with
             Sig_value(id, decl) ->
               store_value (Ident.hide id) p decl env
-          | Sig_type(id, decl, _) ->
+          | Sig_type(id, decl, _, _) ->
+            (* FIXME GRGR transp *)
               let dynid = type_dynid anchor dynamic pos id in
               store_type ~dynid (Ident.hide id) p decl env
           | Sig_exception(id, decl) ->

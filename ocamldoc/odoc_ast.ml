@@ -970,7 +970,7 @@ module Analyser =
               | _ -> false)
         | Element_type t ->
              (function
-                Types.Sig_type (ident,_,_) ->
+                Types.Sig_type (ident,_,_,_) ->
                   (* A VOIR: il est possible que le detail du type soit cache *)
                   let n1 = Name.simple t.ty_name
                   and n2 = Ident.name ident in

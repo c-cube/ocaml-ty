@@ -221,7 +221,7 @@ let rec search_type_in_signature t ~sign ~prefix ~mode =
   begin fun item -> match item with
         Sig_value (id, vd) ->
           if matches vd.val_type then [lid_of_id id, Pvalue] else []
-      | Sig_type (id, td, _) ->
+      | Sig_type (id, td, _, _) ->
           if
           matches (newconstr (Pident id) td.type_params) ||
           begin match td.type_manifest with
@@ -360,7 +360,7 @@ let search_pattern_symbol text =
         List2.flat_map sign ~f:
           begin function
             Sig_value (i, _) when check i -> [i, Pvalue]
-          | Sig_type (i, _, _) when check i -> [i, Ptype]
+          | Sig_type (i, _, _, _) when check i -> [i, Ptype]
           | Sig_exception (i, _) when check i -> [i, Pconstructor]
           | Sig_module (i, _, _) when check i -> [i, Pmodule]
           | Sig_modtype (i, _) when check i -> [i, Pmodtype]

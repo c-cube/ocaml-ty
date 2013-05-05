@@ -76,6 +76,12 @@ let tree_of_rec = function
   | Trec_first -> Orec_first
   | Trec_next -> Orec_next
 
+(* Print shadow annotation *)
+
+let tree_of_shadow = function
+  | Transparent -> Oshadow_transparent
+  | Default -> Oshadow_default
+
 (* Print a raw type expression, with sharing *)
 
 let raw_list pr ppf = function
@@ -788,11 +794,12 @@ and tree_of_constructor_ret =
 and tree_of_label (name, mut, arg) =
   (Ident.name name, mut = Mutable, tree_of_typexp false arg)
 
-let tree_of_type_declaration id decl rs =
-  Osig_type (tree_of_type_decl id decl, tree_of_rec rs)
+let tree_of_type_declaration id decl rs ss =
+  Osig_type (tree_of_type_decl id decl, tree_of_rec rs, tree_of_shadow ss)
 
 let type_declaration id ppf decl =
-  !Oprint.out_sig_item ppf (tree_of_type_declaration id decl Trec_first)
+  !Oprint.out_sig_item ppf
+    (tree_of_type_declaration id decl Trec_first Default)
 
 (* Print an exception declaration *)
 
@@ -1033,10 +1040,11 @@ and tree_of_signature_rec = function
         match item with
         | Sig_value(id, decl) ->
             [tree_of_value_description id decl]
-        | Sig_type(id, _, _) when is_row_name (Ident.name id) ->
+        | Sig_type(id, _, _, _) when is_row_name (Ident.name id) ->
             []
-        | Sig_type(id, decl, rs) ->
-            [Osig_type(tree_of_type_decl id decl, tree_of_rec rs)]
+        | Sig_type(id, decl, rs, ss) ->
+            [Osig_type(tree_of_type_decl id decl,
+                       tree_of_rec rs, tree_of_shadow ss)]
         | Sig_exception(id, decl) ->
             [tree_of_exception_declaration id decl]
         | Sig_module(id, mty, rs, _) ->

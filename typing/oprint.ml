@@ -384,7 +384,8 @@ and print_out_sig_item ppf =
                      | Orec_first -> "module rec"
                      | Orec_next -> "and")
         name !out_module_type mty
-  | Osig_type(td, rs) ->
+  | Osig_type(td, rs, ss) ->
+        (* FIXME GRGR transp *)
         print_out_type_decl
           (if rs = Orec_next then "and" else "type")
           ppf td

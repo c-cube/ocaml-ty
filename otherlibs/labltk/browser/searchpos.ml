@@ -294,7 +294,7 @@ let edit_source ~file ~path ~sign =
       let id, kind =
         match item with
           Sig_value (id, _) -> id, Pvalue
-        | Sig_type (id, _, _) -> id, Ptype
+        | Sig_type (id, _, _, _) -> id, Ptype
         | Sig_exception (id, _) -> id, Pconstructor
         | Sig_module (id, _, _) -> id, Pmodule
         | Sig_modtype (id, _) -> id, Pmodtype
@@ -459,7 +459,7 @@ and view_type_decl path ~env =
       | _ -> raise Not_found
   with Not_found ->
     view_signature_item ~path ~env
-      [Sig_type(ident_of_path path ~default:"t", td, Trec_first)]
+      [Sig_type(ident_of_path path ~default:"t", td, Trec_first, Default)]
 
 and view_type_id li ~env =
   let path, decl = lookup_type li env in

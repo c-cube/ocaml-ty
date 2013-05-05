@@ -113,7 +113,7 @@ type field_desc =
 
 let item_ident_name = function
     Sig_value(id, _) -> (id, Field_value(Ident.name id))
-  | Sig_type(id, _, _) -> (id, Field_type(Ident.name id))
+  | Sig_type(id, _, _, _) -> (id, Field_type(Ident.name id))
   | Sig_exception(id, _) -> (id, Field_exception(Ident.name id))
   | Sig_module(id, _, _, _) -> (id, Field_module(Ident.name id))
   | Sig_modtype(id, _) -> (id, Field_modtype(Ident.name id))
@@ -192,7 +192,8 @@ and signatures env cxt subst sig1 sig2 =
         let nextpos =
           match item with
             Sig_value(_,{val_kind = Val_prim _})
-          | Sig_type(_,_,_)
+            (* FIXME GRGR transp *)
+          | Sig_type(_,_,_,_)
           | Sig_modtype(_,_)
           | Sig_class_type(_,_,_) -> pos
           | Sig_value(_,_)
@@ -218,7 +219,7 @@ and signatures env cxt subst sig1 sig2 =
         let (id2, name2) = item_ident_name item2 in
         let name2, report =
           match item2, name2 with
-            Sig_type (_, {type_manifest=None}, _), Field_type s
+            Sig_type (_, {type_manifest=None}, _, _), Field_type s
             when let l = String.length s in
             l >= 4 && String.sub s (l-4) 4 = "#row" ->
               (* Do not report in case of failure,
@@ -260,7 +261,8 @@ and signature_components env cxt subst = function
         Val_prim p -> signature_components env cxt subst rem
       | _ -> (pos, cc) :: signature_components env cxt subst rem
       end
-  | (Sig_type(id1, tydecl1, _), Sig_type(id2, tydecl2, _), pos) :: rem ->
+            (* FIXME GRGR transp *)
+  | (Sig_type(id1, tydecl1, _, _), Sig_type(id2, tydecl2, _, _), pos) :: rem ->
       type_declarations env cxt subst id1 tydecl1 tydecl2;
       signature_components env cxt subst rem
   | (Sig_exception(id1, excdecl1), Sig_exception(id2, excdecl2), pos)

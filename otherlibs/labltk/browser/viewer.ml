@@ -218,7 +218,7 @@ let search_symbol () =
 
 let ident_of_decl ~modlid = function
     Sig_value (id, _) -> Lident (Ident.name id), Pvalue
-  | Sig_type (id, _, _) -> Lident (Ident.name id), Ptype
+  | Sig_type (id, _, _, _) -> Lident (Ident.name id), Ptype
   | Sig_exception (id, _) -> Ldot (modlid, Ident.name id), Pconstructor
   | Sig_module (id, _, _) -> Lident (Ident.name id), Pmodule
   | Sig_modtype (id, _) -> Lident (Ident.name id), Pmodtype

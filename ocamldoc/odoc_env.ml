@@ -51,7 +51,7 @@ let rec add_signature env root ?rel signat =
   let f env item =
     match item with
       Types.Sig_value (ident, _) -> { env with env_values = (rel_name ident, qualify ident) :: env.env_values }
-    | Types.Sig_type (ident,_,_) -> { env with env_types = (rel_name ident, qualify ident) :: env.env_types }
+    | Types.Sig_type (ident,_,_,_) -> { env with env_types = (rel_name ident, qualify ident) :: env.env_types }
     | Types.Sig_exception (ident, _) -> { env with env_exceptions = (rel_name ident, qualify ident) :: env.env_exceptions }
     | Types.Sig_module (ident, modtype, _, _) ->
         let env2 =

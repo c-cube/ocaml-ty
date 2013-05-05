@@ -201,7 +201,7 @@ and signature = signature_item list
 
 and signature_item =
     Sig_value of Ident.t * value_description
-  | Sig_type of Ident.t * type_declaration * rec_status
+  | Sig_type of Ident.t * type_declaration * rec_status * shadow_status
   | Sig_exception of Ident.t * exception_declaration
   | Sig_module of Ident.t * module_type * rec_status * bool
   | Sig_modtype of Ident.t * modtype_declaration
@@ -216,3 +216,7 @@ and rec_status =
     Trec_not                            (* not recursive *)
   | Trec_first                          (* first in a recursive group *)
   | Trec_next                           (* not first in a recursive group *)
+
+and shadow_status =
+    Default
+  | Transparent

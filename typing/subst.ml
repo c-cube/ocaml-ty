@@ -260,7 +260,7 @@ let exception_declaration s descr =
 
 let rec rename_bound_idents s idents = function
     [] -> (List.rev idents, s)
-  | Sig_type(id, d, _) :: sg ->
+  | Sig_type(id, d, _, _) :: sg ->
       let id' = Ident.rename id in
       rename_bound_idents (add_type id (Pident id') s) (id' :: idents) sg
   | Sig_module(id, mty, _, _) :: sg ->
@@ -304,8 +304,8 @@ and signature_component s comp newid =
   match comp with
     Sig_value(id, d) ->
       Sig_value(newid, value_description s d)
-  | Sig_type(id, d, rs) ->
-      Sig_type(newid, type_declaration s d, rs)
+  | Sig_type(id, d, rs, ss) ->
+      Sig_type(newid, type_declaration s d, rs, ss)
   | Sig_exception(id, d) ->
       Sig_exception(newid, exception_declaration s d)
   | Sig_module(id, mty, rs, dynamic) ->

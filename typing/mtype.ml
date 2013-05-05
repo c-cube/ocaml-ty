@@ -44,7 +44,7 @@ and strengthen_sig env sg p =
     [] -> []
   | (Sig_value(id, desc) as sigelt) :: rem ->
       sigelt :: strengthen_sig env rem p
-  | Sig_type(id, decl, rs) :: rem ->
+  | Sig_type(id, decl, rs, ss) :: rem ->
       let newdecl =
         match decl.type_manifest, decl.type_private, decl.type_kind with
           Some _, Public, _ -> decl
@@ -58,7 +58,7 @@ and strengthen_sig env sg p =
             else
               { decl with type_manifest = manif }
       in
-      Sig_type(id, newdecl, rs) :: strengthen_sig env rem p
+      Sig_type(id, newdecl, rs, ss) :: strengthen_sig env rem p
   | (Sig_exception(id, d) as sigelt) :: rem ->
       sigelt :: strengthen_sig env rem p
   | Sig_module(id, mty, rs, d) :: rem ->
@@ -112,8 +112,8 @@ let nondep_supertype env mid mty =
                           val_kind = d.val_kind;
                           val_loc = d.val_loc;
                         }) :: rem'
-      | Sig_type(id, d, rs) ->
-          Sig_type(id, Ctype.nondep_type_decl env mid id (va = Co) d, rs)
+      | Sig_type(id, d, rs, ss) ->
+          Sig_type(id, Ctype.nondep_type_decl env mid id (va = Co) d, rs, ss)
           :: rem'
       | Sig_exception(id, d) ->
           let d = {exn_args = List.map (Ctype.nondep_type env mid) d.exn_args;
@@ -164,9 +164,10 @@ let rec enrich_modtype env p mty =
       mty
 
 and enrich_item env p = function
-    Sig_type(id, decl, rs) ->
+    Sig_type(id, decl, rs, ss) ->
       Sig_type(id,
-                enrich_typedecl env (Pdot(p, Ident.name id, nopos)) decl, rs)
+               enrich_typedecl env (Pdot(p, Ident.name id, nopos)) decl,
+               rs, ss)
   | Sig_module(id, mty, rs, d) ->
       Sig_module(id,
                   enrich_modtype env (Pdot(p, Ident.name id, nopos)) mty, rs, d)
@@ -184,7 +185,7 @@ and type_paths_sig env p pos sg =
   | Sig_value(id, decl) :: rem ->
       let pos' = match decl.val_kind with Val_prim _ -> pos | _ -> pos + 1 in
       type_paths_sig env p pos' rem
-  | Sig_type(id, decl, _) :: rem ->
+  | Sig_type(id, decl, _, _) :: rem ->
       Pdot(p, Ident.name id, nopos) :: type_paths_sig env p pos rem
   | Sig_module(id, mty, _, _) :: rem ->
       type_paths env (Pdot(p, Ident.name id, pos)) mty @
