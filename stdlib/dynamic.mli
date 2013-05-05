@@ -102,3 +102,12 @@ module type Typetable = sig
 end
 
 module Typetable(T : sig type 'a t end) : Typetable with type 'a elt = 'a T.t
+
+(** *)
+
+module Constr1(T : sig type <transparent> 'a constr end) : sig
+  type _ is_instance = Eq : 'a ty -> 'a T.constr is_instance
+  val is_constr : 'a ty -> 'a is_instance option
+  (* val create : 'a ty -> 'a constr ty *)
+  (* val decompose : 'a constr ty -> 'a ty *)
+end

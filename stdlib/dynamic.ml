@@ -447,3 +447,25 @@ module Typetable(T : sig type 'a t end)
       | None -> simple_find t.types ty
 
   end
+
+(* *)
+
+
+(** *)
+
+module Constr1(T : sig type <transparent> 'a constr end) : sig
+  type _ is_instance = Eq : 'a ty -> 'a T.constr is_instance
+  val is_constr : 'a ty -> 'a is_instance option
+  (* val create : 'a ty -> 'a constr ty *)
+  (* val decompose : 'a constr ty -> 'a ty *)
+end = struct
+  let decl_id = (CTy.extract_resolved_decl (CTy.repr (type 'a T.constr))).CTy.decl_id
+  type _ is_instance = Eq : 'a ty -> 'a T.constr is_instance
+  let is_constr (type t) (t: t ty) : t is_instance option  =
+    match CTy.extract_decl (CTy.expand_head (CTy.repr t)) with
+    | Some (decl, params) when CTy.equal_path decl.CTy.decl_id decl_id ->
+        Some (Obj.magic (Eq (CTy.ty params.(0))))
+    | _ -> None
+end
+
+

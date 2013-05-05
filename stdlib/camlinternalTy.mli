@@ -118,6 +118,7 @@ val ty: uty -> 'a ty
 val expand_head: uty -> uty
 val instantiated_description: uty -> path * uty array * decl_description
 val extract_decl: uty -> (declaration * uty array) option
+val extract_resolved_decl: uty -> declaration
 val build_dynamic_head: (uty -> dynamic_head) -> uty -> dynamic_head
 
 val equal: uty -> uty -> bool

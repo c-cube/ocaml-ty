@@ -6,6 +6,13 @@ let map_option f o = match o with
   | None -> None
   | Some v -> Some (f v)
 
+let rec array_forall2 f a1 a2 i =
+  i >= Array.length a1
+  || ( f a1.(i) a2.(i)
+       && array_forall2 f a1 a2 (succ i) )
+let array_forall2 f a1 a2 =
+  Array.length a1 == Array.length a2 && array_forall2 f a1 a2 0
+
 (** *)
 
 let implicit_ty_label = "!ty"
@@ -394,7 +401,6 @@ let extract_decl ty =
   | DT_constr (decl, args, _) -> Some (decl, args)
   | DT_var _ | DT_univar | DT_object | DT_package | DT_dummy -> None
 
-
 (** Instantiation *)
 
 let filter_fwd = ref (fun _ _ _ -> assert false)
@@ -477,6 +483,13 @@ let build_dynamic_head builder ty =
       ty.head <- Some head;
       head
 
+let extract_resolved_decl ty =
+  match (extract_decl ty, extract_decl (expand_head ty)) with
+  | Some (decl, params), Some (decl', params')
+    when Array.length params = Array.length params' &&
+         array_forall2 (==) params params' -> decl'
+  | _ -> invalid_arg "camlinternalTy.get_decl" (* TODO error msg *)
+
 (** Equality *)
 
 let rec equal_path p1 p2 =
@@ -486,13 +499,6 @@ let rec equal_path p1 p2 =
   | (Papply (p1, p1'), Papply (p2, p2')) ->
       equal_path p1 p2 && equal_path p1' p2'
   | _ -> false
-
-let rec array_forall2 f a1 a2 i =
-  i >= Array.length a1
-  || ( f a1.(i) a2.(i)
-       && array_forall2 f a1 a2 (succ i) )
-let array_forall2 f a1 a2 =
-  Array.length a1 == Array.length a2 && array_forall2 f a1 a2 0
 
 let rec equal_expr expr_env ty1 ty2 =
   let ty1 = expand_head ty1 in
