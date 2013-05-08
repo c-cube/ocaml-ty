@@ -159,14 +159,11 @@ and decl_description =
 and pvariant_description = {
   pvariant_closed: bool;
   pvariant_constructors: (string * int * bool * uty array) array;
-  pvariant_required: (string array) option;
+  pvariant_required: string array option;
 }
 
 and variant_description = {
-  variant_constant_constructors:
-    (string * (uty array * bool) option) array;
-  variant_allocated_constructors:
-    (string * uty array * (uty array * bool) option) array;
+  variant_constructors: (string * uty array * (uty array * bool) option) array
 }
 
 and record_description = {
@@ -193,15 +190,12 @@ external repr: 'a ty -> uty = "%identity"
 external ty: uty -> 'a ty = "%identity"
 
 let have_return_types constrs =
-  List.exists (fun (_, ret) -> ret <> None)
-    (Array.to_list constrs.variant_constant_constructors)
-  || List.exists (fun (_, _, ret) -> ret <> None)
-       (Array.to_list constrs.variant_allocated_constructors)
+  List.exists (fun (_, _, ret) -> ret <> None) (Array.to_list constrs)
 
 let is_gadt decl =
   match decl.body with
   | DT_abstract | DT_record _ | DT_alias _ -> false
-  | DT_variant constrs -> have_return_types constrs
+  | DT_variant constrs -> have_return_types constrs.variant_constructors
 
 let is_var ty =
   match ty.desc with
@@ -280,37 +274,25 @@ let predef_decl name params variance builder =
     extern = None;
     loc = ("*predef",0,0) }
 
+let dt_variant desc =
+  DT_variant { variant_constructors = desc }
+
 let unit_decl =
-  let kind =
-    DT_variant
-      { variant_constant_constructors =
-        [| ("()", None) |];
-        variant_allocated_constructors = [| |]; } in
+  let kind = dt_variant [| ("()", [||],  None) |] in
   predef_decl "unit" [||] [||] (fun _ -> kind)
 
 let bool_decl =
-  let kind =
-    DT_variant
-      { variant_constant_constructors =
-        [| ("false", None) ; ("true", None) |];
-        variant_allocated_constructors = [| |]; } in
+  let kind = dt_variant [| ("false", [||], None) ; ("true", [||], None) |] in
   predef_decl "bool" [||] [||] (fun _ -> kind)
 
 let exn_decl =
-  let kind =
-    DT_variant
-      { variant_constant_constructors = [| |];
-        variant_allocated_constructors = [| |]; } in
+  let kind = dt_variant [||] in
   predef_decl "exn" [||] [||] (fun _ -> kind)
 
 let option_decl =
   predef_decl "option" [| make_expr (DT_var None) |] [| Covariant |]
     (fun params ->
-      DT_variant
-        { variant_constant_constructors =
-            [| ("None", None) |];
-          variant_allocated_constructors =
-            [| ("Some", [|params.(0)|], None) |]; })
+      dt_variant [| ("None", [||], None); ("Some", [|params.(0)|], None) |])
 
 let list_decl =
   let decl_id = new_predef_path "list" in
@@ -322,10 +304,8 @@ let list_decl =
       priv = false;
       body =
         DT_variant
-          { variant_constant_constructors =
-              [| ("[]", None) |];
-            variant_allocated_constructors =
-              [| ("::", [|params.(0); expr|], None) |] } ;
+          { variant_constructors =
+              [| ("[]", [||],  None) ; ("::", [|params.(0); expr|], None) |] };
       builder;
       extern = None;
       loc = ("*predef",0,0) }
@@ -336,10 +316,8 @@ let list_decl =
   and builder params =
     let rec kind =
       DT_variant
-        { variant_constant_constructors =
-          [| ("[]", None) |];
-          variant_allocated_constructors =
-          [| ("::", [|params.(0); expr|], None) |]; }
+        { variant_constructors =
+            [| ("[]", [| |], None); ("::", [|params.(0); expr|], None) |] }
     and expr =
       { expr_id = new_expr_id ();
         desc = DT_constr(decl, params, ref (Some kind));
@@ -415,25 +393,10 @@ let build_gadt_subst ret_params params =
     (Array.to_list params) (Array.to_list ret_params)
 
 let instantiate_gadt_constrs constrs params =
-  let variant_constant_constructors =
-    Array.map
-      (function
-        | (name, None) -> assert false
-        | (name, Some (ret_params, _)) ->
-            match build_gadt_subst ret_params params with
-            | None ->
-                (name, Some (ret_params, true))
-            | Some subst ->
-                let env = ref subst in
-                (name,
-                 Some (Array.map (copy_expr env) ret_params, false)))
-      constrs.variant_constant_constructors
-  in
-  let variant_allocated_constructors =
-    Array.map
-      (function
-        | (name, tyl, None) -> assert false
-        | (name, tyl, Some (ret_params, _)) ->
+  Array.map
+    (function
+      | (name, tyl, None) -> assert false
+      | (name, tyl, Some (ret_params, _)) ->
             match build_gadt_subst ret_params params with
             | None ->
                 (name, tyl, Some (ret_params, true))
@@ -441,9 +404,7 @@ let instantiate_gadt_constrs constrs params =
                 let env = ref subst in
                 (name, Array.map (copy_expr env) tyl,
                  Some (Array.map (copy_expr env) ret_params, false)))
-    constrs.variant_allocated_constructors
-  in
-  { variant_constant_constructors; variant_allocated_constructors; }
+    constrs.variant_constructors
 
 let instantiated_description ty =
   match ty.desc with
@@ -453,8 +414,9 @@ let instantiated_description ty =
       | None ->
           let instantiated =
             match decl.body with
-            | DT_variant constrs when have_return_types constrs ->
-                DT_variant (instantiate_gadt_constrs constrs params)
+            | DT_variant constrs
+              when have_return_types constrs.variant_constructors ->
+                dt_variant (instantiate_gadt_constrs constrs params)
             | _ -> builder params in
           cache := Some instantiated;
           (decl.decl_id, params, instantiated)
@@ -997,16 +959,11 @@ let mark_loops_desc cxt desc =
   | DT_alias ty -> mark_loops_rec cxt [] ty
   | DT_variant cstrs ->
       Array.iter
-        (fun (_, ret_type_opt) ->
-          may (fun (tys, _) -> Array.iter (mark_loops_rec cxt []) tys)
-            ret_type_opt)
-        cstrs.variant_constant_constructors;
-      Array.iter
         (fun (_, args, ret_type_opt) ->
           may (fun (tys, _) -> Array.iter (mark_loops_rec cxt []) tys)
             ret_type_opt;
           Array.iter (mark_loops_rec cxt []) args)
-        cstrs.variant_allocated_constructors
+        cstrs.variant_constructors
   | DT_record r ->
       Array.iter
         (fun (_, _, sty) -> mark_loops_scheme cxt [] sty)
@@ -1144,32 +1101,20 @@ and tree_of_desc cxt name desc =
 
 and tree_of_constructors cxt dname cstrs =
   List.fold_right
-    (fun (name, ret) acc ->
+    (fun (name, args, ret) acc ->
       match ret with
-      | None -> (name, [], None) :: acc
-      | Some (_, true) -> acc (* Impossible GADT case *)
+      | None ->
+          (name, tree_of_typlist cxt args, None) :: acc
+      | Some (ret_type, true) -> acc (* Impossible GADT case *)
       | Some (ret_type, false) ->
           let nm = cxt.names in
           cxt.names <- [];
           let ret = Otyp_constr (dname, tree_of_typlist cxt ret_type) in
-          cxt.names <- nm;
-          (name, [], Some ret) :: acc)
-    (Array.to_list cstrs.variant_constant_constructors)
-    (List.fold_right
-       (fun (name, args, ret) acc ->
-         match ret with
-         | None ->
-             (name, tree_of_typlist cxt args, None) :: acc
-         | Some (ret_type, true) -> acc (* Impossible GADT case *)
-         | Some (ret_type, false) ->
-             let nm = cxt.names in
-             cxt.names <- [];
-             let ret = Otyp_constr (dname, tree_of_typlist cxt ret_type) in
              let args = tree_of_typlist cxt args in
              cxt.names <- nm;
              (name, args, Some ret) :: acc)
-       (Array.to_list cstrs.variant_allocated_constructors)
-       [])
+    (Array.to_list cstrs.variant_constructors)
+    []
 
 and tree_of_record cxt r =
   Array.to_list

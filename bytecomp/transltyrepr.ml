@@ -501,24 +501,11 @@ and transl_external_decl cxt decl =
       cxt.env <- env';
       Lprim (Pmakeblock (0, Immutable), [decl])
 
-and transl_constant_case_rec cxt (name,ty) =
-  Lprim(Pmakeblock(0, Immutable),
-        [Lconst(Const_immstring name);
-         ( match ty with
-           | None -> Lconst(Const_base(Const_int 0))
-           | Some { desc = Tconstr (_, params, _) }->
-               let transl_expr = transl_expr_rec cxt in
-               Lprim(Pmakeblock(0, Immutable),
-                     [Lprim (Pmakeblock(0, Immutable),
-                             [make_array (List.map transl_expr params);
-                              Lconst(Const_base(Const_int (0))) ])])
-           | Some _ -> assert false
-         )])
-
-and transl_allocated_case_rec cxt (name,tys,rty) =
+and transl_variant_case_rec cxt (id, tys, ret_ty) =
+  let name = Ident.name id in
   let transl_expr = transl_expr_rec cxt in
   let rty =
-    match rty with
+    match ret_ty with
     | None -> Lconst(Const_base(Const_int 0))
     | Some { desc = Tconstr (_, params, _) }->
         Lprim(Pmakeblock(0, Immutable),
@@ -564,21 +551,10 @@ and transl_kind_rec1 cxt kind =
       (* CamlinternalTy.DT_abstract *)
       Lconst(Const_base(Const_int 0))
   | Type_variant constrs ->
-      let consts, allocs = List.fold_right
-          (fun (name, tys, ret_ty) (consts, allocs) ->
-            match tys with
-            | [] -> ((Ident.name name, ret_ty) :: consts, allocs)
-            | tys -> (consts, ((Ident.name name, tys, ret_ty) :: allocs)) )
-          constrs
-          ([], []) in
       (* CamlinternalTy.DT_variant of variant_description *)
       Lprim(Pmakeblock(1, Immutable),
             [Lprim(Pmakeblock(0, Immutable),
-                   [(* variant_constant_constructors = *)
-                    make_array (List.map (transl_constant_case_rec cxt) consts);
-                    (* variant_allocated_constructors = *)
-                    make_array (List.map (transl_allocated_case_rec cxt) allocs)
-                  ])])
+                   [make_array (List.map (transl_variant_case_rec cxt) constrs)])])
   | Type_record (fields, repr) ->
       (* CamlinternalTy.DT_record of record_description *)
       Lprim(Pmakeblock(2, Immutable),

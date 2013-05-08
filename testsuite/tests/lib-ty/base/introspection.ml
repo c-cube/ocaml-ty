@@ -44,21 +44,19 @@ let rec variantize : type t. t ty -> t -> variant =
   | Tuple tup ->
       VTuple
         (List.map
-           (fun (Field (ty, {field_get})) -> variantize ty (field_get v))
+           (fun (Field (ty, field)) -> variantize ty (field_get field v))
            tup.tuple_fields)
   | Record r ->
       VRecord
         (List.map
-           (fun (name, Field (ty, { field_get })) ->
-             (name, variantize ty (field_get v)))
+           (fun (name, Field (ty, field)) ->
+             (name, variantize ty (field_get field v)))
            r.record_fields)
   | Sum sum ->
-      let (name, DynT(tup, args)) = sum.sum_case v in
+      let (name, args) = sum_get sum v in
       VVariant
         (name,
-         (List.map
-            (fun (Field (ty, { field_get })) -> variantize ty (field_get args))
-            tup.tuple_fields))
+         (List.map (fun (CaseArg (ty, v)) -> variantize ty v) args))
 
 let rec devariantize : type t. t ty -> variant -> t =
   fun (type t) (t: t ty) (v: variant) ->
@@ -106,7 +104,7 @@ and devariantize_record : type t. t record -> (string * variant) list -> t =
 and devariantize_case : type t. t sum -> string -> variant list -> t =
   fun sum name vl ->
     try
-      match List.assoc name sum.sum_cases with
+      match List.assoc name (sum_description sum) with
       | SumCase_constant sel ->
           if vl <> [] then raise VariantMismatch; (* Incorrect arity *)
           case_builder sel ()

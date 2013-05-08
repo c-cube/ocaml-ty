@@ -19,11 +19,11 @@ val string_of_internal_path: path -> string
 val name_of_path: path -> string
 val toplevel_path: path
 
-type record_representation = private
+type record_representation =
   | Record_regular
   | Record_float
 
-type mutable_flag = private
+type mutable_flag =
   | Mutable
   | Immutable
 
@@ -96,10 +96,7 @@ and pvariant_description = private {
 }
 
 and variant_description = private {
-  variant_constant_constructors:
-    (string * (uty array * bool) option) array;
-  variant_allocated_constructors:
-    (string * uty array * (uty array * bool) option) array;
+  variant_constructors: (string * uty array * (uty array * bool) option) array
 }
 
 and record_description = private {

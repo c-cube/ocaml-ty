@@ -10,7 +10,76 @@ val print_head_declaration: Format.formatter -> 'a ty -> unit
 type (_, _) eq = Eq: ('a, 'a) eq
 val eq: 'a ty -> 'b ty -> ('a, 'b) eq option
 
-(** Type introspection *)
+(** Nominal type introspection *)
+
+module Constr1(T : sig type <transparent> 'a constr end) : sig
+  type _ is_instance = Eq : 'a ty -> 'a T.constr is_instance
+  val is_constr : 'a ty -> 'a is_instance option
+  val decompose : 'a T.constr ty -> 'a ty
+end
+
+(* ... *)
+
+module Predef : sig
+
+  module List : sig
+    type _ is_instance = Eq : 'a ty -> 'a list is_instance
+    val is_constr : 'a ty -> 'a is_instance option
+    val decompose : 'a list ty -> 'a ty
+  end
+
+  module Tuple2 : sig
+    type _ is_instance = Eq : 'a ty * 'b ty -> ('a * 'b) is_instance
+    val is_constr : 'a ty -> 'a is_instance option
+    val decompose : ('a * 'b) ty -> 'a ty * 'b ty
+  end
+
+end
+
+(* ... *)
+
+(** Structural type introspection *)
+
+(** Tuple and records. *)
+
+type 'a tuple = private {
+  tuple_fields: 'a field list;
+}
+and 'a record = private {
+  record_fields: (string * 'a field) list;
+  record_repr: record_representation;
+}
+and record_representation
+
+and _ field = private
+  | Field: 'b ty * ('a, 'b) field_accessors -> 'a field
+and ('a, 'b) field_accessors
+
+val field_get: ('a, 'b) field_accessors -> 'a -> 'b
+val field_set: ('a, 'b) field_accessors -> 'a -> 'b -> unit
+val field_mutable: ('a, 'b) field_accessors -> bool
+
+type field_builder = { field_builder: 'a. ?('a) -> string -> int -> 'a }
+
+val tuple_builder: 'a tuple -> field_builder -> 'a
+val record_builder: 'a record -> field_builder -> 'a
+
+(** Sum type and polymorphic variant. *)
+
+type 'a sum
+
+type case_argument = CaseArg: 'a ty * 'a -> case_argument
+val sum_get: 'a sum -> 'a -> string * case_argument list
+
+type (_,_) case_selector
+type _ sum_case = private
+ | SumCase_constant: ('a, unit) case_selector -> 'a sum_case
+ | SumCase_allocated: ('a, 'b) case_selector * 'b tuple -> 'a sum_case
+val sum_description: 'a sum -> (string * 'a sum_case) list
+
+val case_builder: ('a, 'b) case_selector -> 'b -> 'a
+
+(** Head type constructor description. *)
 
 type _ head = private
   | Int: int head
@@ -31,39 +100,6 @@ type _ head = private
   | Sum: 'a sum -> 'a head
   | Arrow: 'a ty * 'b ty -> ('a -> 'b) head
   | Opaque: 'a head
-
-and 'a tuple = private {
-  tuple_fields: 'a field list
-}
-
-and 'a record = private {
-  record_fields: (string * 'a field) list;
-}
-
-and _ field = private
-  | Field: 'b ty * ('a, 'b) field_accessors -> 'a field
-
-and ('a, 'b) field_accessors = private {
-  field_get: 'a -> 'b;
-  field_set: ('a -> 'b -> unit) option;
-}
-
-and dyn_tuple = DynT: 'a tuple * 'a -> dyn_tuple
-
-and 'a sum = private {
-  sum_case: 'a -> string * dyn_tuple;
-  sum_cases: (string * 'a sum_case) list;
-}
-
-and _ sum_case = private
- | SumCase_constant: ('a, unit) case_selector -> 'a sum_case
- | SumCase_allocated: ('a, 'b) case_selector * 'b tuple -> 'a sum_case
-
-and (_,_) case_selector
-
-val tuple_builder: 'a tuple -> field_builder -> 'a
-val record_builder: 'a record -> field_builder -> 'a
-val case_builder: ('a, 'b) case_selector -> 'b -> 'a
 
 val head: 'a ty -> 'a head
 
@@ -97,12 +133,3 @@ module type Typetable = sig
 end
 
 module Typetable(T : sig type 'a t end) : Typetable with type 'a elt = 'a T.t
-
-(** *)
-
-module Constr1(T : sig type <transparent> 'a constr end) : sig
-  type _ is_instance = Eq : 'a ty -> 'a T.constr is_instance
-  val is_constr : 'a ty -> 'a is_instance option
-  (* val create : 'a ty -> 'a constr ty *)
-  (* val decompose : 'a constr ty -> 'a ty *)
-end

@@ -34,11 +34,11 @@ let rec print : type t. t ty -> t Printers.elt =
     | Tuple tup -> print_tuple tup ppf v
     | Record r -> print_record r ppf v
     | Sum sum ->
-        let (name, DynT (tup, args)) = sum.sum_case v in
-        if List.length tup.tuple_fields = 0 then
+        let (name, args) = sum_get sum v in
+        if List.length args = 0 then
           Format.fprintf ppf "%s" name
         else
-          Format.fprintf ppf "%s %a" name (print_tuple tup) args
+          Format.fprintf ppf "%s (%a)" name print_case_args args
     | Arrow _ -> Format.fprintf ppf "<fun>"
     | Opaque -> Format.fprintf ppf "<abstr>"
 
@@ -59,11 +59,11 @@ and print_tuple_fields : type t. t field list -> Format.formatter -> t -> unit =
   fun fields ppf v ->
     match fields with
     | [] -> assert false
-    | [Field (ty, { field_get })] ->
-        Format.fprintf ppf "%a" (print ty) (field_get v);
-    | Field (ty, { field_get }) :: fields ->
+    | [Field (ty, fd)] ->
+        Format.fprintf ppf "%a" (print ty) (field_get fd v);
+    | Field (ty, fd) :: fields ->
         Format.fprintf ppf "%a, %a"
-          (print ty) (field_get v)
+          (print ty) (field_get fd v)
           (print_tuple_fields fields) v
 
 and print_record : type t . t record -> Format.formatter -> t -> unit =
@@ -71,16 +71,30 @@ and print_record : type t . t record -> Format.formatter -> t -> unit =
     Format.fprintf ppf "{%a}" (print_record_fields r.record_fields) v
 
 and print_record_fields :
-type t. (string * t field) list -> Format.formatter -> t -> unit =
+  type t. (string * t field) list -> Format.formatter -> t -> unit =
   fun fields ppf v ->
     match fields with
     | [] -> assert false
-    | [name, Field (ty, { field_get })] ->
-        Format.fprintf ppf "%s = %a" name (print ty) (field_get v);
-    | (name, Field (ty, { field_get })) :: fields ->
+    | [name, Field (ty, fd)] ->
+        Format.fprintf ppf "%s = %a" name (print ty) (field_get fd v);
+    | (name, Field (ty, fd)) :: fields ->
         Format.fprintf ppf "%s = %a; %a"
-          name (print ty) (field_get v)
+          name (print ty) (field_get fd v)
           (print_record_fields fields) v
+
+and print_case_args :
+  type t. Format.formatter -> case_argument list -> unit =
+  fun ppf args ->
+    match args with
+    | [] -> assert false
+    | [CaseArg (ty, v)] ->
+        Format.fprintf ppf "%a" (print ty) v;
+    | CaseArg (ty, v) :: args ->
+        Format.fprintf ppf "%a, %a"
+          (print ty) v
+          print_case_args args
+
+
 
 let display ?(type t) (v: t) =
   Format.printf "%a\n" (print (type t)) v

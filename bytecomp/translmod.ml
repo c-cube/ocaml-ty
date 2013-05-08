@@ -345,9 +345,9 @@ and transl_structure fields cc rootpath = function
                 List.map
                   (fun (pos, cc) ->
                     match cc with
-                      Tcoerce_primitive p -> transl_primitive Location.none p
+                    | Tcoerce_primitive p -> transl_primitive Location.none p
                     | Tcoerce_type (env, path) ->
-                        (* FIXME GRGR location *)
+                        (* FIXME GRGR location and error messages. *)
                         Transltyrepr.transl_decl env Location.none path
                     | _ -> apply_coercion cc (Lvar v.(pos)))
                   pos_cc_list)
@@ -357,7 +357,7 @@ and transl_structure fields cc rootpath = function
   | item :: rem ->
       match item.str_desc with
       | Tstr_eval expr ->
-      Lsequence(transl_exp expr, transl_structure fields cc rootpath rem)
+        Lsequence(transl_exp expr, transl_structure fields cc rootpath rem)
   | Tstr_value(rec_flag, pat_expr_list) ->
       let ext_fields = rev_let_bound_idents pat_expr_list @ fields in
       transl_let rec_flag pat_expr_list
