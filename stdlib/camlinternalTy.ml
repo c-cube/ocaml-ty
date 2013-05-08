@@ -454,15 +454,24 @@ let extract_resolved_decl ty =
 
 (** Equality *)
 
-let rec equal_path p1 p2 =
+let rec equal_path strict p1 p2 =
   match (p1, p2) with
-  | (Pident (i1, _), Pident (i2, _)) -> i1 = i2
-  | (Pdot (p1, n1), Pdot (p2, n2)) -> n1 = n2 && equal_path p1 p2
+  | (Pident (i1, a1), Pident (i2, a2)) when strict -> i1 = i2
+  | (Pident (i1, a1), Pident (i2, a2)) -> i1 = i2 || equal_anchor a1 a2
+  | ( (Pident (_, Coercion p1), p2) | (p1, Pident (_, Coercion p2)))
+    when not strict ->
+       equal_path false p1 p2
+  | (Pdot (p1, n1), Pdot (p2, n2)) -> n1 = n2 && equal_path strict p1 p2
   | (Papply (p1, p1'), Papply (p2, p2')) ->
-      equal_path p1 p2 && equal_path p1' p2'
+      equal_path strict p1 p2 && equal_path strict p1' p2'
   | _ -> false
 
-let rec equal_expr expr_env ty1 ty2 =
+and equal_anchor a1 a2 =
+  match (a1, a2) with
+  | (Coercion p1, Coercion p2) -> equal_path false p1 p2
+  | _ -> false
+
+let rec equal_expr strict expr_env ty1 ty2 =
   let ty1 = expand_head ty1 in
   let ty2 = expand_head ty2 in
   ty1.expr_id = ty2.expr_id
@@ -472,8 +481,8 @@ let rec equal_expr expr_env ty1 ty2 =
            || (ty1.expr_id = id2 && ty2.expr_id = id2))
          !expr_env )
   || ( expr_env := (ty1.expr_id, ty2.expr_id):: !expr_env;
-       equal_desc expr_env ty1 ty2 )
-and equal_desc expr_env ty1 ty2 =
+       equal_desc strict expr_env ty1 ty2 )
+and equal_desc strict expr_env ty1 ty2 =
   match (ty1.desc, ty2.desc) with
   | (DT_unit, DT_unit)
   | (DT_bool, DT_bool)
@@ -490,44 +499,44 @@ and equal_desc expr_env ty1 ty2 =
   | (DT_list ty1, DT_list ty2)
   | (DT_option ty1, DT_option ty2)
   | (DT_lazy ty1, DT_lazy ty2)
-  | (DT_ty ty1, DT_ty ty2) -> equal_expr expr_env ty1 ty2
+  | (DT_ty ty1, DT_ty ty2) -> equal_expr false expr_env ty1 ty2
 
   | (DT_format6 (ty1, ty2, ty3, ty4, ty5, ty6),
      DT_format6 (ty1', ty2', ty3', ty4', ty5', ty6')) ->
-       equal_expr expr_env ty1 ty1' &&
-       equal_expr expr_env ty2 ty2' &&
-       equal_expr expr_env ty3 ty3' &&
-       equal_expr expr_env ty4 ty4' &&
-       equal_expr expr_env ty5 ty5' &&
-       equal_expr expr_env ty6 ty6'
+       equal_expr strict expr_env ty1 ty1' &&
+       equal_expr strict expr_env ty2 ty2' &&
+       equal_expr strict expr_env ty3 ty3' &&
+       equal_expr strict expr_env ty4 ty4' &&
+       equal_expr strict expr_env ty5 ty5' &&
+       equal_expr strict expr_env ty6 ty6'
 
   | (DT_tuple tyl1, DT_tuple tyl2) ->
       Array.length tyl1 = Array.length tyl2
-      && array_forall2 (equal_expr expr_env) tyl1 tyl2
+      && array_forall2 (equal_expr strict expr_env) tyl1 tyl2
   | (DT_arrow (lbl1, ty1, ty1'), DT_arrow (lbl2, ty2, ty2')) ->
       lbl1 = lbl2
-      && equal_expr expr_env ty1 ty2
-      && equal_expr expr_env ty1' ty2'
+      && equal_expr strict expr_env ty1 ty2
+      && equal_expr strict expr_env ty1' ty2'
   | (DT_pvariant pv1, DT_pvariant pv2) ->
       pv1.pvariant_closed = pv2.pvariant_closed
       && Array.length pv1.pvariant_constructors =
          Array.length pv2.pvariant_constructors
-      && array_forall2 (equal_pvariant expr_env)
+      && array_forall2 (equal_pvariant strict expr_env)
            pv1.pvariant_constructors pv2.pvariant_constructors
       && pv1.pvariant_required = pv2.pvariant_required
   | (DT_constr (decl1,tyl1, _), DT_constr (decl2,tyl2, _)) ->
-      equal_path decl1.decl_id decl2.decl_id
-      && array_forall2 (equal_expr expr_env) tyl1 tyl2
+      equal_path strict decl1.decl_id decl2.decl_id
+      && array_forall2 (equal_expr strict expr_env) tyl1 tyl2
   | _ -> false
-and equal_pvariant expr_env (name1, _, o1, tyo1) (name2, _, o2, tyo2) =
+and equal_pvariant strict expr_env (name1, _, o1, tyo1) (name2, _, o2, tyo2) =
   if Array.length tyo1 > 1 || Array.length tyo2 > 1 then
     (* FIXME GRGR ??? *)
     invalid_arg "Dynamic.eq: conjunctive type.";
   name1 = name2
   && Array.length tyo1 = Array.length tyo2
-  && array_forall2 (equal_expr expr_env) tyo1 tyo2
+  && array_forall2 (equal_expr strict expr_env) tyo1 tyo2
 
-let equal ty1 ty2 = equal_expr (ref []) ty1 ty2
+let equal ?(strict = false) ty1 ty2 = equal_expr strict (ref []) ty1 ty2
 
 (** Matching type expression *)
 
@@ -582,7 +591,7 @@ and match_desc expr_env subst ty1 ty2 =
       (* GRGR TODO ??? *)
       invalid_arg "CamlinternalTy.match_expr(pvariant): not implemented"
   | (DT_constr (decl1,tyl1, _), DT_constr (decl2,tyl2, _)) ->
-      equal_path decl1.decl_id decl2.decl_id
+      equal_path false decl1.decl_id decl2.decl_id
       && Array.length tyl1 == Array.length tyl2
       && array_forall2 (match_expr expr_env subst) tyl1 tyl2
   | (_, DT_var _) ->

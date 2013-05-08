@@ -39,8 +39,8 @@ let print_head_declaration ppf ty =
 
 type (_, _) eq = Eq: ('a, 'a) eq
 
-let eq (ty1: 'a ty) (ty2: 'b ty): ('a, 'b) eq option =
-  if CTy.equal (CTy.repr ty1) (CTy.repr ty2)
+let eq ?strict (ty1: 'a ty) (ty2: 'b ty): ('a, 'b) eq option =
+  if CTy.equal ?strict (CTy.repr ty1) (CTy.repr ty2)
   then Some (Obj.magic Eq: ('a, 'b) eq)
   else None
 
@@ -57,12 +57,12 @@ end = struct
   type _ is_instance = Eq : 'a ty -> 'a T.constr is_instance
   let is_constr (type t) (t: t ty) : t is_instance option  =
     match CTy.extract_decl (CTy.expand_head (CTy.repr t)) with
-    | Some (decl, params) when CTy.equal_path decl.CTy.decl_id decl_id ->
+    | Some (decl, params) when CTy.equal_path false decl.CTy.decl_id decl_id ->
         Some (Obj.magic (Eq (CTy.ty params.(0))))
     | _ -> None
   let decompose (ty: 'a T.constr ty) =
     match CTy.extract_decl (CTy.expand_head (CTy.repr ty)) with
-    | Some (decl, params) when CTy.equal_path decl.CTy.decl_id decl_id ->
+    | Some (decl, params) when CTy.equal_path false decl.CTy.decl_id decl_id ->
         CTy.ty params.(0)
     | _ -> assert false
 
@@ -468,7 +468,7 @@ module Typetable(T : sig type 'a t end)
 
     module DeclTable = Hashtbl.Make(struct
       type t = CTy.declaration
-      let equal d1 d2 = CTy.equal_path d1.CTy.decl_id d2.CTy.decl_id
+      let equal d1 d2 = CTy.equal_path true d1.CTy.decl_id d2.CTy.decl_id
       let hash d = Hashtbl.hash d.CTy.decl_id
     end)
 

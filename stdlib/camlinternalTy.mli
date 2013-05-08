@@ -118,8 +118,8 @@ val extract_decl: uty -> (declaration * uty array) option
 val extract_resolved_decl: uty -> declaration
 val build_dynamic_head: (uty -> dynamic_head) -> uty -> dynamic_head
 
-val equal: uty -> uty -> bool
-val equal_path: path -> path -> bool
+val equal: ?strict:bool -> uty -> uty -> bool
+val equal_path: bool -> path -> path -> bool
 
 val copy: uty -> uty
 
