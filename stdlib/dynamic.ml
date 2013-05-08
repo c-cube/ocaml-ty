@@ -316,15 +316,13 @@ module type Typetable = sig
   val add: t -> ?extern:bool -> ?intern:bool -> 'a ty -> 'a elt -> unit
 
   module type Constr1 = sig
-    type 'a constr
-    val constr: dummy constr ty
+    type <transparent> 'a constr
     val action : ?('a) -> 'a constr elt
   end
   val add1: t -> ?extern:bool -> ?intern:bool -> (module Constr1) -> unit
 
   module type Constr2 = sig
-    type ('a, 'b) constr
-    val constr: (dummy, dummy) constr ty
+    type <transparent> ('a, 'b) constr
     val action : ?('a) -> ?('b) -> ('a, 'b) constr elt
   end
   val add2: t -> ?extern:bool -> ?intern:bool -> (module Constr2) -> unit
@@ -342,18 +340,15 @@ module Typetable(T : sig type 'a t end)
     type 'a elt = 'a T.t
 
     module type Constr0 = sig
-      type constr
-      val constr: constr ty
+      type <transparent> constr
       val action : constr elt
     end
     module type Constr1 = sig
-      type 'a constr
-      val constr: dummy constr ty
+      type <transparent> 'a constr
       val action : ?('a) -> 'a constr elt
     end
     module type Constr2 = sig
-      type ('a, 'b) constr
-      val constr: (dummy, dummy) constr ty
+      type <transparent> ('a, 'b) constr
       val action : ?('a) -> ?('b) -> ('a, 'b) constr elt
     end
 
@@ -419,14 +414,17 @@ module Typetable(T : sig type 'a t end)
     let add t ?extern ?intern (type t) (ty: t ty) (action: t elt) =
       let module M = struct
         type constr = t
-        let constr = ty
         let action = action
       end in
       add_constrs t ?extern ?intern ty (Action0 (module M))
     let add1 t ?extern ?intern (module M : Constr1) =
-      add_constrs t ?extern ?intern M.constr (Action1 (module M))
+      (* FIXME GRGR: resolve one step only ??? *)
+      add_constrs t ?extern ?intern (type dummy M.constr) (Action1 (module M))
     let add2 t ?extern ?intern (module M : Constr2) =
-      add_constrs t ?extern ?intern M.constr (Action2 (module M))
+      (* FIXME GRGR: resolve one step only ??? *)
+      add_constrs t ?extern ?intern
+                  (type (dummy, dummy) M.constr)
+                  (Action2 (module M))
 
     let find (type t) t (ty : t ty) : t elt =
       let uty = CTy.expand_head (CTy.repr ty) in
@@ -459,7 +457,8 @@ module Constr1(T : sig type <transparent> 'a constr end) : sig
   (* val create : 'a ty -> 'a constr ty *)
   (* val decompose : 'a constr ty -> 'a ty *)
 end = struct
-  let decl_id = (CTy.extract_resolved_decl (CTy.repr (type 'a T.constr))).CTy.decl_id
+  let decl_id =
+    (CTy.extract_resolved_decl (CTy.repr (type 'a T.constr))).CTy.decl_id
   type _ is_instance = Eq : 'a ty -> 'a T.constr is_instance
   let is_constr (type t) (t: t ty) : t is_instance option  =
     match CTy.extract_decl (CTy.expand_head (CTy.repr t)) with

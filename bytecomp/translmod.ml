@@ -346,6 +346,9 @@ and transl_structure fields cc rootpath = function
                   (fun (pos, cc) ->
                     match cc with
                       Tcoerce_primitive p -> transl_primitive Location.none p
+                    | Tcoerce_type (env, path) ->
+                        (* FIXME GRGR location *)
+                        Transltyrepr.transl_decl env Location.none path
                     | _ -> apply_coercion cc (Lvar v.(pos)))
                   pos_cc_list)
       | _ ->

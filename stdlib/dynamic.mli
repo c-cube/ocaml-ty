@@ -61,7 +61,6 @@ and _ sum_case = private
 
 and (_,_) case_selector
 
-type field_builder = { field_builder: 'a. ?('a) -> string -> int -> 'a }
 val tuple_builder: 'a tuple -> field_builder -> 'a
 val record_builder: 'a record -> field_builder -> 'a
 val case_builder: ('a, 'b) case_selector -> 'b -> 'a
@@ -80,17 +79,13 @@ module type Typetable = sig
   val add: t -> ?extern:bool -> ?intern:bool -> 'a ty -> 'a elt -> unit
 
   module type Constr1 = sig
-    type 'a constr
-    val constr: dummy constr ty
-      (* [constr] could be removed if we introduce <transparent> signatures *)
+    type <transparent> 'a constr
     val action : ?('a) -> 'a constr elt
   end
   val add1: t -> ?extern:bool -> ?intern:bool -> (module Constr1) -> unit
 
   module type Constr2 = sig
-    type ('a, 'b) constr
-    val constr: (dummy, dummy) constr ty
-      (* [constr] could be removed if we introduce <transparent> signatures *)
+    type <transparent> ('a, 'b) constr
     val action : ?('a) -> ?('b) -> ('a, 'b) constr elt
   end
   val add2: t -> ?extern:bool -> ?intern:bool -> (module Constr2) -> unit
