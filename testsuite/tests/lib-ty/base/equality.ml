@@ -4,14 +4,14 @@
 let () = CamlinternalTy.use_internal_name := true
 
 let test_eq ty1 ty2 =
-  match Dynamic.eq ty1 ty2 with
+  match Dynamic.eq ~strict:true ty1 ty2 with
   | Some _ -> ()
   | None ->
       Format.printf "Missing equality: %a = %a@."
         Dynamic.print_ty ty1 Dynamic.print_ty ty2
 
 let test_neq ty1 ty2 =
-  match Dynamic.eq ty1 ty2 with
+  match Dynamic.eq ~strict:true ty1 ty2 with
   | None -> ()
   | Some _ ->
       Format.printf "Unexpected equality: %a = %a@."

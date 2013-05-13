@@ -7,15 +7,16 @@ let prefix i =
   if i = 0 then ""
   else String.make i '#' ^ " "
 
-let rec print_ids i decl =
-  print_endline (prefix i ^ Ty.internal_name decl);
-  match decl.Ty.extern with
-  | None -> ()
-  | Some decl -> print_ids (i+1) decl
+let print_ids_raw decl =
+  print_endline (Ty.string_of_internal_path decl.Ty.internal_name);
+  Array.iteri
+    (fun i id ->
+        print_endline (prefix (i+1) ^ (Ty.string_of_internal_path id)))
+    decl.Ty.external_ids
 
 let print_ids ty =
   match (Ty.expand_head (Ty.repr ty)).Ty.desc with
-  | Ty.DT_constr (decl, _, _) -> print_ids 0 decl
+  | Ty.DT_constr (decl, _, _) -> print_ids_raw decl
   | _ -> assert false
 
 (* Without coercion *)
@@ -217,3 +218,21 @@ let () =
   print_ids Common.t;
   print_ids Common.t';
   print_ids (type Common.t)
+
+
+(* Abstracted aliases *)
+
+let () = print_endline "\n\nAbstracted aliases\n"
+
+let print_ids' ty =
+  match (Ty.repr ty).Ty.desc with
+  | Ty.DT_constr (decl, _, _) -> print_ids_raw decl
+  | _ -> assert false
+
+module E : sig
+  type t
+end = struct
+  type t = int
+  let () =
+    print_ids' (type t)
+end

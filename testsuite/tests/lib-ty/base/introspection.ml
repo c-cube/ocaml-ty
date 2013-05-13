@@ -245,7 +245,6 @@ let () =
   test_exn (I6 (I1, I2)) (type (bool * int) i);
   test_exn (I7 (I6 (I2, I2))) (type int i)
 
-
 let read ?(type t) vl = devariantize (type t) vl
 
 let g () =

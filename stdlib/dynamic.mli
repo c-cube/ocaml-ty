@@ -110,21 +110,29 @@ module type Typetable = sig
   type t
   type 'a elt
 
+  type mode = [ `Default | `Strict | `Externals ]
+
   val create: int -> t
 
-  val add: t -> ?extern:bool -> ?intern:bool -> 'a ty -> 'a elt -> unit
+  val add: ?('a) -> t -> 'a elt -> unit
+
+  module type Constr0 = sig
+    type <transparent> constr
+    val action : constr elt
+  end
+  val add0: t -> ?mode:mode -> ?resolve:bool -> (module Constr0) -> unit
 
   module type Constr1 = sig
     type <transparent> 'a constr
     val action : ?('a) -> 'a constr elt
   end
-  val add1: t -> ?extern:bool -> ?intern:bool -> (module Constr1) -> unit
+  val add1: t -> ?mode:mode -> ?resolve:bool -> (module Constr1) -> unit
 
   module type Constr2 = sig
     type <transparent> ('a, 'b) constr
     val action : ?('a) -> ?('b) -> ('a, 'b) constr elt
   end
-  val add2: t -> ?extern:bool -> ?intern:bool -> (module Constr2) -> unit
+  val add2: t -> ?mode:mode -> ?resolve:bool -> (module Constr2) -> unit
 
   (* ... *)
 

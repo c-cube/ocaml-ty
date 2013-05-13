@@ -2113,9 +2113,13 @@ let add_gadt_equation env source destination =
 let propagate_newtype_repr env source destination =
   try
     let source_dynid = Env.find_type_dynid (Path.Pident source) !env in
+    let source_decl = Env.find_type (Path.Pident source) !env in
     let dest_dynid = Env.find_type_dynid (Path.Pident destination) !env in
     let dest_decl = Env.find_type (Path.Pident destination) !env in
-    if source_dynid <> Env.Non_anchored && dest_dynid = Env.Non_anchored then
+    if dest_dynid <> Env.Non_anchored then
+      (* FIXME GRGR: alias are not resolved in Transltyrepr. *)
+      env := Env.add_type ~dynid:dest_dynid source source_decl !env
+    else if source_dynid <> Env.Non_anchored then
       env := Env.add_type ~dynid:source_dynid destination dest_decl !env
   with Not_found -> assert false
 

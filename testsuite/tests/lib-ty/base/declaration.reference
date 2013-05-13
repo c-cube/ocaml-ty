@@ -1,6 +1,6 @@
 type a = A1 | A2 of int | A3 of int * bool | A4 of (bool * int)
 type b = Declaration.a list
-type c = { c : Declaration.a list; }
+type c = { c : Declaration.b; }
 type d = { mutable d1 : int; d2 : bool; }
 type e
 type f = private int
@@ -9,7 +9,7 @@ type h = private [> `B | `A ]
 
 type a = A1 | A2 of int | A3 of int * bool | A4 of (bool * int)
 type b = Common.a list
-type c = { c : Common.a list; }
+type c = { c : Common.b; }
 type d = { mutable d1 : int; d2 : bool; }
 type e
 type f = private int

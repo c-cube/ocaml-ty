@@ -18,6 +18,13 @@ let rec array_forall f a i =
        && array_forall f a (succ i) )
 let array_forall f a = array_forall f a 0
 
+let rec array_forall2 f a1 a2 i =
+  i >= Array.length a1
+  || ( f a1.(i) a2.(i)
+       && array_forall2 f a1 a2 (succ i) )
+let array_forall2 f a1 a2 =
+  Array.length a1 == Array.length a2 && array_forall2 f a1 a2 0
+
 let rec array_find f a i =
   if i >= Array.length a then raise Not_found;
   if f a.(i) then a.(i) else array_find f a (succ i)
@@ -52,17 +59,19 @@ module Constr1(T : sig type <transparent> 'a constr end) : sig
   (* val create : 'a ty -> 'a T.constr ty *)
   val decompose : 'a T.constr ty -> 'a ty
 end = struct
-  let decl_id =
-    (CTy.extract_resolved_decl (CTy.repr (type 'a T.constr))).CTy.decl_id
+  let internal_name =
+    (CTy.extract_resolved_decl (CTy.repr (type 'a T.constr))).CTy.internal_name
   type _ is_instance = Eq : 'a ty -> 'a T.constr is_instance
   let is_constr (type t) (t: t ty) : t is_instance option  =
     match CTy.extract_decl (CTy.expand_head (CTy.repr t)) with
-    | Some (decl, params) when CTy.equal_path false decl.CTy.decl_id decl_id ->
+    | Some (decl, params)
+      when CTy.equal_path ~strict:false decl.CTy.internal_name internal_name ->
         Some (Obj.magic (Eq (CTy.ty params.(0))))
     | _ -> None
   let decompose (ty: 'a T.constr ty) =
     match CTy.extract_decl (CTy.expand_head (CTy.repr ty)) with
-    | Some (decl, params) when CTy.equal_path false decl.CTy.decl_id decl_id ->
+    | Some (decl, params)
+      when CTy.equal_path ~strict:false decl.CTy.internal_name internal_name ->
         CTy.ty params.(0)
     | _ -> assert false
 
@@ -416,24 +425,33 @@ let head (type t) (ty: t ty) : t head =
 (** Association table *)
 
 module type Typetable = sig
+
   type t
   type 'a elt
 
+  type mode = [ `Default | `Strict | `Externals ]
+
   val create: int -> t
 
-  val add: t -> ?extern:bool -> ?intern:bool -> 'a ty -> 'a elt -> unit
+  val add: ?('a) -> t -> 'a elt -> unit
+
+  module type Constr0 = sig
+    type <transparent> constr
+    val action : constr elt
+  end
+  val add0: t -> ?mode:mode -> ?resolve:bool -> (module Constr0) -> unit
 
   module type Constr1 = sig
     type <transparent> 'a constr
     val action : ?('a) -> 'a constr elt
   end
-  val add1: t -> ?extern:bool -> ?intern:bool -> (module Constr1) -> unit
+  val add1: t -> ?mode:mode -> ?resolve:bool -> (module Constr1) -> unit
 
   module type Constr2 = sig
     type <transparent> ('a, 'b) constr
     val action : ?('a) -> ?('b) -> ('a, 'b) constr elt
   end
-  val add2: t -> ?extern:bool -> ?intern:bool -> (module Constr2) -> unit
+  val add2: t -> ?mode:mode -> ?resolve:bool -> (module Constr2) -> unit
 
   (* ... *)
 
@@ -447,9 +465,10 @@ module Typetable(T : sig type 'a t end)
 
     type 'a elt = 'a T.t
 
+    type mode = [ `Default | `Strict | `Externals ]
+
     module type Constr0 = sig
-      type constr (* FIXME transparent *)
-      val constr: constr ty
+      type <transparent> constr
       val action : constr elt
     end
     module type Constr1 = sig
@@ -466,18 +485,18 @@ module Typetable(T : sig type 'a t end)
       | Action1 of (module Constr1)
       | Action2 of (module Constr2)
 
-    module DeclTable = Hashtbl.Make(struct
-      type t = CTy.declaration
-      let equal d1 d2 = CTy.equal_path true d1.CTy.decl_id d2.CTy.decl_id
-      let hash d = Hashtbl.hash d.CTy.decl_id
+    module PathTable = Hashtbl.Make(struct
+      type t = CTy.path
+      let equal p1 p2 = CTy.equal_path ~strict:true p1 p2
+      let hash p = Hashtbl.hash p
     end)
 
     type t =
-      { constrs: action DeclTable.t;
+      { constrs: action PathTable.t;
         mutable types: (module Constr0) list }
 
     let create size = {
-      constrs = DeclTable.create size;
+      constrs = PathTable.create size;
       types = [];
     }
 
@@ -486,62 +505,88 @@ module Typetable(T : sig type 'a t end)
       match actions with
       | [] -> raise Not_found
       | (module M) :: actions ->
-          match eq M.constr ty with
+          match eq (type M.constr) ty with
           | None -> simple_find actions ty
           | Some Eq -> M.action
 
-    let rec register_externals t decl action =
-      match decl.CTy.extern with
-      | None -> ()
-      | Some decl ->
-          DeclTable.add t.constrs decl action;
-          register_externals t decl action
-
-    let is_dummy ty =
+    let extract_decl ty =
       match ty.CTy.desc with
-      | CTy.DT_dummy -> true
-      | _ -> false
+      | CTy.DT_constr
+          ({ CTy.params;
+             CTy.body = CTy.DT_alias uty }, _, _) ->
+               begin match CTy.extract_decl uty with
+               | Some (decl, args)
+                 when array_forall2 CTy.equal params args -> Some decl
+               | _ -> None
+               end
+      | _ -> None
 
-    let add_constrs t ?(extern = false) ?(intern = true)  ty action =
-      let uty = CTy.repr ty in
-      if extern then
-        begin match CTy.extract_decl uty with
-        | Some (decl, args) when array_forall is_dummy args ->
-            register_externals t decl action
-        | _ -> invalid_arg "Dynamic.Typetable.add"
-        end;
-      if intern then
-        begin match CTy.extract_decl (CTy.expand_head uty) with
-        | Some (decl, args) when array_forall is_dummy args ->
-            DeclTable.add t.constrs decl action
-        | _ ->
-            match action with
-            | Action0 action -> t.types <- action :: t.types
-            | _ -> invalid_arg  "Dynamic.Typetable.add(2)"
-        end
+    let rec resolve_decl decl =
+      match decl.CTy.body with
+      | CTy.DT_variant _ | CTy.DT_record _ | CTy.DT_abstract -> decl
+      | CTy.DT_alias uty ->
+          match CTy.extract_decl uty with
+          | Some (decl, args) when array_forall2 (==) args decl.CTy.params ->
+              resolve_decl decl
+          | _ -> invalid_arg "..."
 
-    let add t ?extern ?intern (type t) (ty: t ty) (action: t elt) =
+    let rec add_constrs t
+        ?(mode = (`Default : mode)) ?(resolve = false) decl action =
+      match decl.CTy.body with
+      | CTy.DT_variant _ | CTy.DT_record _ | CTy.DT_abstract ->
+          if resolve then invalid_arg "Dynamic.Typetable.add: not an alias.";
+          begin match mode with
+          | `Default ->
+              PathTable.add t.constrs decl.CTy.internal_name action;
+              Array.iter (fun id -> PathTable.add t.constrs id action)
+                decl.CTy.external_ids
+          | `Strict ->
+              PathTable.add t.constrs decl.CTy.internal_name action
+          | `Externals ->
+              Array.iter (fun id -> PathTable.add t.constrs id action)
+                decl.CTy.external_ids
+          end
+      | CTy.DT_alias _ ->
+          if resolve then
+            add_constrs t ~mode (resolve_decl decl) action
+          else
+            begin match mode with
+            | `Externals ->
+                Array.iter (fun id -> PathTable.add t.constrs id action)
+                  decl.CTy.external_ids
+            | `Default | `Strict ->
+                invalid_arg "Dynamic.Typetable.add: aliased type constructor.";
+            end
+
+    let add ?(type t) t (action: t elt) =
       let module M = struct
         type constr = t
-        let constr = ty
+        let constr = (type t)
         let action = action
       end in
-      add_constrs t ?extern ?intern ty (Action0 (module M))
-    let add1 t ?extern ?intern (module M : Constr1) =
-      (* FIXME GRGR: resolve one step only ??? *)
-      add_constrs t ?extern ?intern (type dummy M.constr) (Action1 (module M))
-    let add2 t ?extern ?intern (module M : Constr2) =
-      (* FIXME GRGR: resolve one step only ??? *)
-      add_constrs t ?extern ?intern
-                  (type (dummy, dummy) M.constr)
-                  (Action2 (module M))
+      t.types <- (module M) :: t.types
+
+    let add0 t ?mode ?resolve (module M : Constr0) =
+      match extract_decl (CTy.repr (type M.constr)) with
+      | None -> invalid_arg "Dynamic.Typetable.add0: not type constructor."
+      | Some decl -> add_constrs t ?mode ?resolve decl (Action0 (module M))
+
+    let add1 t ?mode ?resolve (module M : Constr1) =
+      match extract_decl (CTy.repr (type dummy M.constr)) with
+      | None -> invalid_arg "Typetable.add1: not a type constructor."
+      | Some decl -> add_constrs t ?mode ?resolve decl (Action1 (module M))
+
+    let add2 t ?mode ?resolve (module M : Constr2) =
+      match extract_decl (CTy.repr (type (dummy, dummy) M.constr)) with
+      | None -> invalid_arg "Typetable.add2: not a type constructor."
+      | Some decl -> add_constrs t ?mode ?resolve decl (Action2 (module M))
 
     let find (type t) t (ty : t ty) : t elt =
       let uty = CTy.expand_head (CTy.repr ty) in
       match CTy.extract_decl uty with
       | Some (decl, args) ->
           begin try
-            match DeclTable.find t.constrs decl with
+            match PathTable.find t.constrs decl.CTy.internal_name with
             | Action0 (module M) ->
                 (Obj.magic M.action)
             | Action1 (module M) ->
@@ -555,4 +600,3 @@ module Typetable(T : sig type 'a t end)
       | None -> simple_find t.types ty
 
   end
-

@@ -7,8 +7,9 @@ module Printers = Typetable (struct
 end)
 
 let printers = Printers.create 17
-let register_printer ?extern ?intern ty p =
-  Printers.add printers  ?extern ?intern ty p
+(* let register_printer ?mode ?intern ty p = *)
+  (* Printers.add printers ?extern ?intern ty p *)
+let register_printer0 = Printers.add0 printers
 let register_printer1 = Printers.add1 printers
 let register_printer2 = Printers.add2 printers
 
@@ -155,7 +156,6 @@ let print_list ?(type t) ppf xs =
 let () =
   register_printer1 (module struct
     type 'a constr = 'a list
-    let constr = (type dummy list)
     let action = print_list
    end)
 
@@ -179,7 +179,9 @@ end = struct
   type b = B of string
   let b = B "an opaque value"
   let custom_print ppf (B v) = Format.fprintf ppf "custom:B (%s)" v
-  let () = register_printer ~extern:true (type b) custom_print
+  let () =
+    register_printer0
+      (module struct type constr = b let action = custom_print end)
 end
 
 let _ = display B.b
@@ -191,7 +193,8 @@ end = struct
   type c = C of string
   let c = C "an opaque value"
   let _ =
-    register_printer ~extern:true ~intern:false (type c) (print (type c))
+    register_printer0 ~mode:`Externals
+      (module struct type constr = c let action = print (type c) end)
 end
 
 let _ = display C.c
@@ -206,10 +209,9 @@ end = struct
   let d x = D x
 
   let _ =
-    register_printer1 ~extern:true ~intern:false
+    register_printer1 ~mode:`Externals
       (module struct
         type 'a constr = 'a d
-        let constr = (type dummy d)
         let action ?(type t) ppf v = print (type t d) ppf v
       end)
 

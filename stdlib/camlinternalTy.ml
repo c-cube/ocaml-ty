@@ -134,13 +134,14 @@ and description =
   | DT_dummy
 
 and declaration = {
-  decl_id: path;
+  internal_name: path; (* The 'internal_name' should not be used for the
+                          equality test when body = DT_alias. *)
+  external_ids: path array;
   params: uty array;
   variance: variance array;
   priv: bool;
   body: decl_description;
   builder: builder;
-  extern: declaration option;
   loc: location;
 }
 
@@ -180,9 +181,9 @@ external new_expr_id: unit -> int = "caml_ty_new_expr_id"
 
 let make_expr desc = { expr_id = new_expr_id (); desc; head = None }
 
-let qualified_name decl = string_of_path decl.decl_id
-let internal_name decl = string_of_internal_path decl.decl_id
-let name decl = name_of_path decl.decl_id
+let qualified_name decl = string_of_path decl.internal_name
+let internal_name decl = string_of_internal_path decl.internal_name
+let name decl = name_of_path decl.internal_name
 
 (** *)
 
@@ -266,12 +267,13 @@ let substitute subst ty = copy_expr (ref subst) ty
 
 let predef_decl name params variance builder =
   assert (Array.length params = Array.length variance);
-  { decl_id = new_predef_path name;
+  let internal_name = new_predef_path name in
+  { internal_name;
+    external_ids = [||];
     params; variance;
     priv = false;
     body = builder params;
     builder;
-    extern = None;
     loc = ("*predef",0,0) }
 
 let dt_variant desc =
@@ -295,10 +297,11 @@ let option_decl =
       dt_variant [| ("None", [||], None); ("Some", [|params.(0)|], None) |])
 
 let list_decl =
-  let decl_id = new_predef_path "list" in
+  let internal_name = new_predef_path "list" in
   let params = [| make_expr (DT_var None) |] in
   let rec decl =
-    { decl_id;
+    { internal_name;
+      external_ids = [||];
       params;
       variance = [| Covariant |];
       priv = false;
@@ -307,7 +310,6 @@ let list_decl =
           { variant_constructors =
               [| ("[]", [||],  None) ; ("::", [|params.(0); expr|], None) |] };
       builder;
-      extern = None;
       loc = ("*predef",0,0) }
   and expr =
     { expr_id = new_expr_id ();
@@ -410,7 +412,7 @@ let instantiated_description ty =
   match ty.desc with
   | DT_constr ({ builder } as decl , params, cache) ->
       begin match !cache with
-      | Some instantiated -> (decl.decl_id, params, instantiated)
+      | Some instantiated -> (decl.internal_name, params, instantiated)
       | None ->
           let instantiated =
             match decl.body with
@@ -419,19 +421,19 @@ let instantiated_description ty =
                 dt_variant (instantiate_gadt_constrs constrs params)
             | _ -> builder params in
           cache := Some instantiated;
-          (decl.decl_id, params, instantiated)
+          (decl.internal_name, params, instantiated)
       end
   | _ ->
       match extract_decl ty with
-      | Some (decl, params) -> (decl.decl_id, params,decl.builder params)
+      | Some (decl, params) -> (decl.internal_name, params,decl.builder params)
       | None -> assert false
 
-let expand_head ty =
+let rec expand_head ty =
   match ty.desc with
   | DT_constr ({ body = DT_alias _; priv = false }, _, _) ->
       let (_, _, desc) = instantiated_description ty in
       begin match desc with
-      | DT_alias ty -> ty
+      | DT_alias ty -> expand_head ty
       | _ -> assert false
       end
   | _ -> ty
@@ -454,21 +456,20 @@ let extract_resolved_decl ty =
 
 (** Equality *)
 
-let rec equal_path strict p1 p2 =
+let rec equal_path ?(strict=false) p1 p2 =
   match (p1, p2) with
   | (Pident (i1, a1), Pident (i2, a2)) when strict -> i1 = i2
   | (Pident (i1, a1), Pident (i2, a2)) -> i1 = i2 || equal_anchor a1 a2
   | ( (Pident (_, Coercion p1), p2) | (p1, Pident (_, Coercion p2)))
-    when not strict ->
-       equal_path false p1 p2
-  | (Pdot (p1, n1), Pdot (p2, n2)) -> n1 = n2 && equal_path strict p1 p2
+    when not strict -> equal_path ~strict:false p1 p2
+  | (Pdot (p1, n1), Pdot (p2, n2)) -> n1 = n2 && equal_path ~strict p1 p2
   | (Papply (p1, p1'), Papply (p2, p2')) ->
-      equal_path strict p1 p2 && equal_path strict p1' p2'
+      equal_path ~strict p1 p2 && equal_path ~strict p1' p2'
   | _ -> false
 
 and equal_anchor a1 a2 =
   match (a1, a2) with
-  | (Coercion p1, Coercion p2) -> equal_path false p1 p2
+  | (Coercion p1, Coercion p2) -> equal_path ~strict:false p1 p2
   | _ -> false
 
 let rec equal_expr strict expr_env ty1 ty2 =
@@ -525,7 +526,7 @@ and equal_desc strict expr_env ty1 ty2 =
            pv1.pvariant_constructors pv2.pvariant_constructors
       && pv1.pvariant_required = pv2.pvariant_required
   | (DT_constr (decl1,tyl1, _), DT_constr (decl2,tyl2, _)) ->
-      equal_path strict decl1.decl_id decl2.decl_id
+      equal_path ~strict decl1.internal_name decl2.internal_name
       && array_forall2 (equal_expr strict expr_env) tyl1 tyl2
   | _ -> false
 and equal_pvariant strict expr_env (name1, _, o1, tyo1) (name2, _, o2, tyo2) =
@@ -591,7 +592,7 @@ and match_desc expr_env subst ty1 ty2 =
       (* GRGR TODO ??? *)
       invalid_arg "CamlinternalTy.match_expr(pvariant): not implemented"
   | (DT_constr (decl1,tyl1, _), DT_constr (decl2,tyl2, _)) ->
-      equal_path false decl1.decl_id decl2.decl_id
+      equal_path ~strict:false decl1.internal_name decl2.internal_name
       && Array.length tyl1 == Array.length tyl2
       && array_forall2 (match_expr expr_env subst) tyl1 tyl2
   | (_, DT_var _) ->
@@ -1030,9 +1031,9 @@ let rec tree_of_typexp cxt ty =
       | DT_constr(decl, tyl, _) ->
           let name =
             if !use_internal_name then
-              string_of_internal_path decl.decl_id
+              string_of_internal_path decl.internal_name
             else
-              string_of_path decl.decl_id in
+              string_of_path decl.internal_name in
           Otyp_constr (name, tree_of_typlist cxt tyl)
       | DT_var _ | DT_univar ->
           Otyp_var (name_of_type cxt ty)
@@ -1080,7 +1081,7 @@ let tree_of_scheme cxt sty =
 
 let rec tree_of_type_decl decl =
 
-  let name = name_of_path decl.decl_id in
+  let name = name_of_path decl.internal_name in
   let cxt = create_printing_context () in
   Array.iter (add_alias cxt) decl.params;
   Array.iter (mark_loops_rec cxt []) decl.params;

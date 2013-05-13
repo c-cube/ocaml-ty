@@ -179,7 +179,6 @@ let get_row_fields row =
   (fields, tags)
 
 let rec mark_expr cxt ty =
-  let ty = Ctype.expand_head cxt.env ty in
   let px = Btype.proxy ty in
   if not (List.memq px cxt.known_expr) then
     ( cxt.known_expr <- px :: cxt.known_expr;
@@ -228,19 +227,18 @@ and mark_path cxt path =
   if not (List.exists (Path.same path) Predef.builtin_paths) then
     if not (List.exists (fun (p,_) -> Path.same path p) cxt.known_decl) then
       match Env.find_type_dynid path cxt.env with
-      | Env.Non_anchored | Env.Newtype _ | Env.Dynamic _ -> ()
-      | Env.Anchored (_, _, extern) ->
+      | Env.Non_anchored | Env.Dynamic _ -> ()
+      | Env.Newtype _ ->
+          let decl = Env.find_type path cxt.env in
+          may (mark_expr cxt) decl.type_manifest
+      | Env.Anchored _ ->
           cxt.known_decl <-
             (path, (Ident.create "tyrepr_decl", cxt.env)) :: cxt.known_decl;
           let decl = Env.find_type path cxt.env in
           List.iter (mark_var cxt) decl.type_params;
-          mark_kind cxt decl.type_kind;
-          may (mark_expr cxt) decl.type_manifest;
-          may (fun (id, env) ->
-            let env' = cxt.env in
-            cxt.env <- env;
-            mark_path cxt (Pident id);
-            cxt.env <- env') extern
+          match decl.type_manifest with
+          | Some expr -> mark_expr cxt expr
+          | None -> mark_kind cxt decl.type_kind
 
 and mark_kind cxt kind =
   match kind with
@@ -281,14 +279,13 @@ let build_expr desc =
 (** Type expressions and type declarations *)
 
 let rec transl_expr_rec cxt ty =
-  let ty = Ctype.expand_head cxt.env ty in
   let px = Btype.proxy ty in
   try Lvar (fst (List.assq px cxt.shared_expr))
   with Not_found -> transl_expr_rec1 cxt ty
 
 and transl_expr_rec1 cxt ty =
   match ty.Types.desc with
-  | Tconstr (Pident id as path,[],_) ->
+  | Tconstr (path, _, _) ->
       begin match Env.find_type_dynid path cxt.env with
       | Env.Newtype id -> Lvar (Ident.tyrepr id)
       | _ -> build_expr (transl_desc_rec cxt ty)
@@ -443,15 +440,19 @@ and transl_decl_rec cxt path =
   | Env.Dynamic path ->
       (* FIXME GRGR functor application ??? *)
       transl_path path
-  | Env.Anchored (dynid, _, ext_decl) ->
+  | Env.Anchored (dynid, _, ext_ids) ->
       let (filename, beg_char, end_char) =
         Location.get_pos_info decl.type_loc.Location.loc_start in
       let kind = Ident.create "kind" in
       (* Build record of type 'CamlinternalTy.declaration' *)
       Llet(Strict, kind, transl_kind_rec cxt decl,
            Lprim (Pmakeblock (0, Immutable),
-                  [ (* decl_id = *)
+                  [ (* internal_name = *)
                     transl_dynpath cxt.env dynid;
+                    (* external_ids = *)
+                    make_array (List.map
+                                  (transl_dynpath cxt.env)
+                                  (transl_external_ids ext_ids));
                     (* params = *)
                     make_array
                       (List.map (transl_expr_rec cxt) decl.type_params);
@@ -463,8 +464,6 @@ and transl_decl_rec cxt path =
                     Lvar kind;
                     (* builder = *)
                     transl_builder cxt kind path decl;
-                    (* extern = *)
-                    transl_external_decl cxt ext_decl;
                     (* loc = *)
                     Lprim (Pmakeblock (0, Immutable),
                            [Lconst(Const_immstring filename);
@@ -491,15 +490,16 @@ and transl_private decl =
   | Public -> Lconst(Const_base(Const_int 0))
   | Private -> Lconst(Const_base(Const_int 1))
 
-and transl_external_decl cxt decl =
-  match decl with
-  | None -> lambda_unit
+and transl_external_ids ext_ids =
+  match ext_ids with
+  | None -> []
   | Some (id, env) ->
-      let env' = cxt.env in
-      cxt.env <- env;
-      let decl = transl_path_rec cxt (Pident id) in
-      cxt.env <- env';
-      Lprim (Pmakeblock (0, Immutable), [decl])
+      match Env.find_type_dynid (Pident id) env with
+      | Env.Non_anchored | Env.Newtype _ | Env.Dynamic _ -> assert false
+      | Env.Anchored (dynid, _, ext_ids) ->
+          let ids = transl_external_ids ext_ids in
+          let decl = Env.find_type (Pident id) env in
+          if decl.type_manifest = None then dynid :: ids else ids
 
 and transl_variant_case_rec cxt (id, tys, ret_ty) =
   let name = Ident.name id in
@@ -856,6 +856,7 @@ let transl_expr env loc cty ty =
   try
     match cty with
     | None ->
+        let ty = Ctype.correct_levels ty in
         let cxt = create_context env loc in
         mark_expr cxt ty;
         let body = transl_expr_rec cxt ty in

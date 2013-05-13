@@ -73,13 +73,13 @@ and description = private
   | DT_dummy
 
 and declaration = private {
-  decl_id: path;
+  internal_name: path;
+  external_ids: path array;
   params: uty array;
   variance: variance array;
   priv: bool;
   body: decl_description;
   builder: builder;
-  extern: declaration option;
   loc: location;
 }
 
@@ -119,7 +119,7 @@ val extract_resolved_decl: uty -> declaration
 val build_dynamic_head: (uty -> dynamic_head) -> uty -> dynamic_head
 
 val equal: ?strict:bool -> uty -> uty -> bool
-val equal_path: bool -> path -> path -> bool
+val equal_path: ?strict:bool -> path -> path -> bool
 
 val copy: uty -> uty
 
